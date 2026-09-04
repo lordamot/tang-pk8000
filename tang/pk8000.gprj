@@ -1,0 +1,33 @@
+<?xml version="1" encoding="UTF-8"?>
+<!DOCTYPE gowin-fpga-project>
+<Project>
+    <Template>FPGA</Template>
+    <Version>5</Version>
+    <Device name="GW2AR-18C" pn="GW2AR-LV18QN88C8/I7">gw2ar18c-000</Device>
+    <FileList>
+        <File path="src/top.v" type="file.verilog" enable="1"/>
+        <File path="src/sys_pll.v" type="file.verilog" enable="1"/>
+        <File path="src/i2s_tx.v" type="file.verilog" enable="1"/>
+        <File path="src/pk8000/vm80a.v" type="file.verilog" enable="1"/>
+        <File path="src/pk8000/cpu8080.v" type="file.verilog" enable="1"/>
+        <File path="src/pk8000/waits_rom.v" type="file.verilog" enable="1"/>
+        <File path="src/pk8000/sdram.v" type="file.verilog" enable="1"/>
+        <File path="src/pk8000/pk8000_rom.v" type="file.verilog" enable="1"/>
+        <File path="src/pk8000/ports.v" type="file.verilog" enable="1"/>
+        <File path="src/pk8000/video.v" type="file.verilog" enable="1"/>
+        <File path="src/hdmi/hdmi_packet.v" type="file.verilog" enable="1"/>
+        <File path="src/hdmi/hdmi_serdes.v" type="file.verilog" enable="1"/>
+        <File path="src/hdmi/hdmi_tx.v" type="file.verilog" enable="1"/>
+        <File path="src/hdmi/tmds_channel.v" type="file.verilog" enable="1"/>
+        <File path="src/mister/hid.v" type="file.verilog" enable="1"/>
+        <File path="src/mister/mcu_spi.v" type="file.verilog" enable="1"/>
+        <File path="src/mister/osd_u8g2.v" type="file.verilog" enable="1"/>
+        <File path="src/mister/sd_card.v" type="file.verilog" enable="1"/>
+        <File path="src/mister/sd_rw.v" type="file.verilog" enable="1"/>
+        <File path="src/mister/sdcmd_ctrl.v" type="file.verilog" enable="1"/>
+        <File path="src/mister/sector_dpram.v" type="file.verilog" enable="1"/>
+        <File path="src/mister/sysctrl.v" type="file.verilog" enable="1"/>
+        <File path="src/pk8000.cst" type="file.cst" enable="1"/>
+        <File path="src/pk8000.sdc" type="file.sdc" enable="1"/>
+    </FileList>
+</Project>

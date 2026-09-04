@@ -1,0 +1,40 @@
+Check repo ../tang-uknc - follow its methodology structure etc.
+Copy tools you need from there.
+
+Lets create "Сура ПК8000" emulator for tang board now.
+
+About computer - try start from here:
+- http://micklab.ru/PK8000.htm
+- https://zx-pk.ru/threads/8140-pk8000-obshchie-voprosy.html
+
+Search for able emulator also - emustudio might be good decision
+
+****
+
+PK8000 Nano exists: the ПК8000 "Сура" on the Tang Nano 20K, in this repository, built on UKNC Nano's structure and method. It lints, it boots BASIC 1.2 to its prompt in simulation, its bitstream builds and meets timing, and its firmware builds. It has not been on a board. Nothing is committed; the tree is yours to review.
+
+What is here
+
+The repository mirrors ../tang-uknc: CLAUDE.md with the traps found today, .claude/rules (guideline, git, timing) and .claude/docs (platform, fpga, video, mcu, build, tools, progress), a Makefile with the same targets, tools/ with UKNC Nano's scripts and its toolchain hard-linked in, sim/ with a full-machine testbench, mnano/ with the firmware, tang/ with the design, tang/rom/ with the ROM and the schematics, bin/ with both binaries, README, howto, CHANGELOG, VERSION 0.1.0 alpha, and this prompts/ transcript.
+
+Where the machine's facts came from: Mick's schematics (micklab.ru) for the wiring, Emu80's Pk8000.cpp for the behaviour (raster, modes, registers, the measured wait-state tables), MAME's pk8000.cpp as a second reading, and the BASIC 1.2 ROM from Emu80's distribution (CRC a25b4b2c, MAME's hobby.rom). emuStudio has no ПК8000; Emu80 is the community's emulator and it is the better source. micklab's own ROM dumps and the two PLM dumps are RAR5 archives this host cannot open (no unrar).
+
+The design
+
+One 30 MHz clock and everything a phase of it: the КР580ВМ80А is vm80a (1801BM1's gate-level replica, CC-BY) with its two clock phases fed as enables, twelve clocks a T-state; the 64 KB is in the SDRAM on a fixed timetable that gives the CPU one six-clock slot and the video another in every T-state, so nothing ever waits for memory and there is no clock crossing to place. The 16 KB ROM is in BSRAM. The two ВВ55s, the video registers, the colour RAM, the keyboard matrix and the joysticks are in ports.v; the display renders each machine line into a buffer as the beam draws it and reads it out twice as 768x576 at the machine's own 50.73 Hz through UKNC Nano's HDMI encoder; the beeper goes to HDMI and I2S. The video controller's cost to the CPU is paid as wait states from Emu80's per-opcode tables, switchable in the menu. The firmware has core id 7, a keymap onto the 10x8 matrix, and a menu of Reset, Volume, Beeper, CPU waits, Joysticks, About, Save settings.
+
+Resources: logic 18%, registers 10%, BSRAM 24%, both PLLs; clk30 makes 66.6 MHz with zero violations, and the SDC is three lines.
+
+What the simulation showed
+
+The ROM sets its ports, passes its RAM test of F000h-FFFFh, enables interrupts at 0.56 s and services one a frame, sets mode 0 with the name table at 0000h and the font at 0800h, and at 2.35 s the decoded HDMI frame shows "ПК8000 BASIC 1987 версия 1.2", "46873 Bytes free", "Ok", the cursor and the function-key bar. Every RAM byte read back as written (657421 checks), the address never moved after the strobe, 0 ECC errors in the HDMI packets. Keys typed through the HID path are echoed by BASIC and a held Shift changes the function-key bar, so that path works; but the typing test is not yet a trustworthy instrument, since the ROM debounces across its once-a-frame scans and three runs typed three different lines, so what the digit row types under Shift is still open.
+
+Five defects were found and fixed on the way, each by a frame rather than by a counter: a deadlock between the SDRAM's initialisation and the phase counter, the SDRAM word captured one clock late (every read zero, hidden by the ROM's zero-writing RAM test), a line buffer sized 640 for a 1024-entry index, a tile hand-over race, and the video's request raised one clock too late so the picture was black over a correct name table. They are in progress.md and the CLAUDE.md traps.
+
+What is not there
+
+No tape, no floppy, no IDE, no AY: progress.md puts the tape player for .cas files from the SD card first, since that is how a Сура gets software, then the НГМД with its ROM (in tang/rom), then the IDE adapter, then the AY card and the firmware's smart digit row.
+
+Claims, by name: built, linted, simulated to the prompt, timed. Not flashed, not seen on a monitor, and whether a sink takes 768x576 at 50.73 Hz is the first board question. The wait tables' data are Emu80's (GPL) measurements reproduced as data; LICENCE.md says so, and you may want a view on that.
+
+Next: flash both binaries and watch the first boot; or start the tape player.

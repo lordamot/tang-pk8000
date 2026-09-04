@@ -1,0 +1,13 @@
+.idea
+.vscode
+
+# Fetched toolchain and build products - see Makefile and tools/fetch.sh.
+/tools/
+/build/
+/sim/out/
+/mnano/build/
+
+# Gowin's scratch under tang/impl/ (tang/impl/pnr/ is kept on purpose)
+/tang/impl/gwsynthesis/
+/tang/impl/temp/
+__pycache__/
