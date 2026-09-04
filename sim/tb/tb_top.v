@@ -14,11 +14,29 @@
 //   +TRACE_MS=<n> hold the traces off until n ms
 //   +SPITRACE     every byte the MCU stand-in gets into sysctrl
 //   +PPM_MAX=<n>  cap how many .ppm frames are written (default 4)
+//   +PPM_EVERY=<n>  write every n-th frame only (default 1; 50 is about a second)
 //   +PPM_FROM=<n> skip the frames before n ms
 //   +NOMEMCHECK   turn off the read-after-write check on the SDRAM port
 //   +HDMIDBG      print every data island packet the decoder sees
 //   +TYPE         type a BASIC line through the HID path (at +TYPE_MS=<n>, default 2200)
+//   +TYPE_SHIFTTEST  "ab", Shift tap, "ab", Shift tap, "ab", Enter at +TYPE_MS
+//   +TYPE_LINE    10 print "tape ok" and Enter at +TYPE_MS (with +RAMDUMP: the tokens)
+//   +TYPE_STR=<text>  type the text ('_' for a space) and Enter at +TYPE_MS
+//   +BAS=<file.tok>  poke a tokenised program into 4001h at +TYPE_MS and run it
+//   +TYPE_CLOAD   type cload"TEST and Enter at +TYPE_MS, then "run" and Enter
+//                 +RUN_MS-300 later (with +TAPE=<file>, see sd_card_sim.v;
+//                 +CLOAD_VAR=<n> for the other spellings, none of which load);
+//                 $test$plusargs matches prefixes, so +TYPE_CLOAD and
+//                 +TYPE_MS= would both read as +TYPE without the guard below
+//   +EXP=<n>      the OSD's expansion: 0 none, 1 floppy, 2 IDE, 3 ROM disk
 //   +NOWAITS      run with the video controller's cost turned off ('w' 0)
+//   +TAPE= +FDDA= +FDDB= +HDD= +ROMDISK=<file>   images (sim/stubs/sd_card_sim.v)
+//   +SDFAST       the card answers in microseconds, not a millisecond
+//   +LONG_HEADER  the tape's header tones at the machine's length (4000
+//                 bit-times, 3.3 s each) instead of the testbench's short ones
+//
+// Every delay in milliseconds is `ms * 64'd1000000`: a 32-bit product
+// wraps past 4294 ms, and +PPM_FROM=6300 once wrote its frames at 2.0 s.
 //
 // The SPI master, the HDMI decoder and the .ppm writer are UKNC Nano's
 // (sim/tb/tb_top.v there), the checks around them are this machine's.
@@ -140,6 +158,48 @@ module tb_top;
         end
     endtask
 
+    // SYS command 6: bytes into the machine's RAM (sysctrl.v, poke.v), as
+    // mnano/bas.c sends them: the address, then the bytes of a file
+    task sys_poke_file(input [15:0] adr, input [1023:0] fname);
+        integer fd, c, n;
+        begin
+            fd = $fopen(fname, "rb");
+            if (fd == 0) $display("[tb] cannot open %0s", fname);
+            else begin
+                spi_begin;
+                spi_byte(8'd0);     // target SYS
+                spi_byte(8'd6);     // command "poke"
+                spi_byte(adr[15:8]);
+                spi_byte(adr[7:0]);
+                n = 0;
+                c = $fgetc(fd);
+                while (c != -1) begin
+                    spi_byte(c[7:0]);
+                    n = n + 1;
+                    c = $fgetc(fd);
+                end
+                spi_end;
+                $fclose(fd);
+                $display("[tb] %0t poked %0d bytes at %04x", $time, n, adr);
+                poke_len = n;
+            end
+        end
+    endtask
+
+    task sys_poke_word(input [15:0] adr, input [15:0] val);
+        begin
+            spi_begin;
+            spi_byte(8'd0);
+            spi_byte(8'd6);
+            spi_byte(adr[15:8]);
+            spi_byte(adr[7:0]);
+            spi_byte(val[7:0]);
+            spi_byte(val[15:8]);
+            spi_end;
+        end
+    endtask
+    integer poke_len = 0;
+
     // HID command 1: one keyboard byte, as usb_host.c's kbd_tx sends it
     task hid_key(input [7:0] code);
         begin
@@ -168,6 +228,81 @@ module tb_top;
         end
     endtask
 
+    // РГ (Shift) is row 6, column 0
+    task shift_down; begin hid_key({1'b0, 4'd6, 3'd0} + 8'd1); #KEY_HOLD; end endtask
+    task shift_up;   begin hid_key(8'h80 | ({1'b0, 4'd6, 3'd0} + 8'd1)); #KEY_HOLD; end endtask
+
+    // A character as the ROM makes it (platform.md, the keyboard): letters
+    // lower case unshifted and capitals with Shift; the digit row gives the
+    // digit WITH Shift and the symbol without; the rest of the symbols on
+    // the MSX keycaps' positions, Shift for the upper one.  Unknown
+    // characters are skipped with a message.
+    task type_char(input [7:0] ch);
+        reg [3:0] row; reg [2:0] col; reg sh; reg ok;
+        begin
+            ok = 1'b1; sh = 1'b0; row = 4'd0; col = 3'd0;
+            if (ch >= "a" && ch <= "z") begin ch = ch - 8'h20; sh = 1'b0; end
+            else if (ch >= "A" && ch <= "Z") sh = 1'b1;
+            if (ch >= "A" && ch <= "Z") begin
+                // row 2 has A B at 6, 7; rows 3, 4, 5 the rest, eight a row
+                ch = ch - "A" + 8'd22;      // A = 22 = row 2 col 6
+                row = ch[6:3] + 4'd0; col = ch[2:0];
+                row = (ch >> 3); col = ch[2:0];
+            end
+            else if (ch >= "0" && ch <= "9") begin
+                sh = 1'b1;
+                if (ch <= "7") begin row = 4'd0; col = ch - "0"; end
+                else begin row = 4'd1; col = ch - "8"; end
+            end
+            else case (ch)
+                "!": begin row = 4'd0; col = 3'd1; end
+                "\"": begin row = 4'd0; col = 3'd2; end
+                "#": begin row = 4'd0; col = 3'd3; end
+                "$": begin row = 4'd0; col = 3'd4; end
+                "%": begin row = 4'd0; col = 3'd5; end
+                "&": begin row = 4'd0; col = 3'd6; end
+                "'": begin row = 4'd0; col = 3'd7; end
+                "(": begin row = 4'd1; col = 3'd0; end
+                ")": begin row = 4'd1; col = 3'd1; end
+                ",": begin row = 4'd1; col = 3'd2; end
+                "-": begin row = 4'd1; col = 3'd3; end
+                ".": begin row = 4'd1; col = 3'd4; end
+                ":": begin row = 4'd1; col = 3'd5; end
+                ";": begin row = 4'd1; col = 3'd6; end
+                "?": begin row = 4'd1; col = 3'd7; end     // the / key unshifted is ? (BASIC's PRINT)
+                "<": begin row = 4'd1; col = 3'd2; sh = 1'b1; end
+                "=": begin row = 4'd1; col = 3'd3; sh = 1'b1; end
+                ">": begin row = 4'd1; col = 3'd4; sh = 1'b1; end
+                "*": begin row = 4'd1; col = 3'd5; sh = 1'b1; end
+                "+": begin row = 4'd1; col = 3'd6; sh = 1'b1; end
+                "/": begin row = 4'd1; col = 3'd7; sh = 1'b1; end
+                "@": begin row = 4'd2; col = 3'd5; end
+                "_": begin row = 4'd8; col = 3'd0; end     // a space
+                " ": begin row = 4'd8; col = 3'd0; end
+                default: begin ok = 1'b0; $display("[tb] type_char: no key for %c (%02x)", ch, ch); end
+            endcase
+            if (ok) begin
+                if (sh) shift_down;
+                key(row, col);
+                if (sh) shift_up;
+            end
+        end
+    endtask
+
+    task type_string(input [8*255:1] str);
+        integer n, i;
+        reg [7:0] c;
+        begin
+            // the string is right-aligned in the vector: find its length
+            n = 0;
+            for (i = 0; i < 255; i = i + 1) if (str[8*(i+1) -: 8] != 8'd0) n = i + 1;
+            for (i = n - 1; i >= 0; i = i - 1) begin
+                c = str[8*(i+1) -: 8];
+                type_char(c);
+            end
+        end
+    endtask
+
     reg [7:0] st0, st1, st2, st3;
 
     // Exactly what sys_status_is_valid() in mnano/sysctrl.c does.
@@ -188,7 +323,9 @@ module tb_top;
     //--------------------------------------------------------------------
     // Run
     //--------------------------------------------------------------------
-    integer run_ms, type_ms;
+    integer run_ms, type_ms, exp_n, cload_var;
+    reg [8*255:1] type_str;
+    reg [1023:0]  bas_file;
     integer tries;
     reg     fastboot;
     integer cfg_errs = 0;
@@ -239,6 +376,14 @@ module tb_top;
         sys_set_val("b", 8'd1);
         sys_set_val("w", $test$plusargs("NOWAITS") ? 8'd0 : 8'd1);
         sys_set_val("j", 8'd0);
+        if (!$value$plusargs("EXP=%d", exp_n)) exp_n = 0;
+        sys_set_val("x", exp_n[7:0]);
+        sys_set_val("T", 8'd1);
+        sys_set_val("y", 8'd1);
+        sys_set_val("p", 8'd0); sys_set_val("q", 8'd0); sys_set_val("K", 8'd0);
+        // the tape's header tone is 4000 bit-times on the machine, which is
+        // three seconds of simulation; the ROM locks on far fewer
+        if (!$test$plusargs("LONG_HEADER")) force uut.tp.short_header = 1'b1;
         sys_set_val("R", 8'd0);     // and run
         $display("[tb] %0t released reset", $time);
         #2000;
@@ -251,9 +396,11 @@ module tb_top;
         // +TYPE: a line of BASIC through the keyboard path, once the ROM
         // is at its prompt: "print 1+1" and Enter, so the screen shows
         // " 2" - see the frames.  Unshifted letters are lower case.
-        if ($test$plusargs("TYPE")) begin
+        if ($test$plusargs("TYPE") && !$test$plusargs("TYPE_CLOAD") && !$test$plusargs("TYPE_SHIFTTEST")
+                                   && !$test$plusargs("TYPE_LINE") && !$test$plusargs("TYPE_STR")
+                                   && !$test$plusargs("BAS")) begin
             if (!$value$plusargs("TYPE_MS=%d", type_ms)) type_ms = 2200;
-            #(type_ms * 1000000);
+            #(type_ms * 64'd1000000);
             $display("[tb] %0t typing PRINT 1+1", $time);
             key(4, 5); key(4, 7); key(3, 6); key(4, 3); key(5, 1);   // P R I N T
             key(8, 0);                                              // space
@@ -265,8 +412,119 @@ module tb_top;
             key(7, 7);                                              // Enter
         end
 
-        #(run_ms * 1000000);
+        // +BAS=<file.tok>: a tokenised program (tools/mkcas.py --tok) into
+        // the RAM at 4001h at +TYPE_MS, the ROM's pointers after it, then
+        // "run" - the OSD's "Run .bas" as mnano/bas.c does it
+        if ($value$plusargs("BAS=%s", bas_file)) begin
+            if (!$value$plusargs("TYPE_MS=%d", type_ms)) type_ms = 2200;
+            #(type_ms * 64'd1000000);
+            sys_poke_file(16'h4001, bas_file);
+            sys_poke_word(16'hF930, 16'h4001 + poke_len[15:0]);   // VARTAB
+            sys_poke_word(16'hF932, 16'h4001 + poke_len[15:0]);   // ARYTAB
+            sys_poke_word(16'hF934, 16'h4001 + poke_len[15:0]);   // STREND
+            #(20 * 64'd1000000);
+            $display("[tb] %0t typing run", $time);
+            key(4, 7); key(5, 2); key(4, 3);                        // r u n
+            key(7, 7);
+        end
+
+        // +TYPE_STR=<text>: type the text and Enter at +TYPE_MS, through
+        // type_str below (letters, digits, the symbols a BASIC line needs;
+        // '_' for a space, since a plusarg cannot carry one)
+        if ($value$plusargs("TYPE_STR=%s", type_str)) begin
+            if (!$value$plusargs("TYPE_MS=%d", type_ms)) type_ms = 2200;
+            #(type_ms * 64'd1000000);
+            $display("[tb] %0t typing %0s", $time, type_str);
+            type_string(type_str);
+            key(7, 7);                                              // Enter
+        end
+
+        // +TYPE_LINE: type 10 print "tape ok" and Enter at +TYPE_MS - the
+        // line mkcas.py puts on the tape, for a RAM dump of the ROM's own
+        // tokens (+RAMDUMP; the program is at 4001h)
+        if ($test$plusargs("TYPE_LINE")) begin
+            if (!$value$plusargs("TYPE_MS=%d", type_ms)) type_ms = 2200;
+            #(type_ms * 64'd1000000);
+            $display("[tb] %0t typing 10 print \"tape ok\"", $time);
+            shift_down; key(0, 1); key(0, 0); shift_up;             // 1 0 (digits are shifted)
+            key(8, 0);                                              // space
+            key(4, 5); key(4, 7); key(3, 6); key(4, 3); key(5, 1);   // p r i n t
+            key(8, 0);                                              // space
+            key(0, 2);                                              // "
+            key(5, 1); key(2, 6); key(4, 5); key(3, 2);             // t a p e
+            key(8, 0);                                              // space
+            key(4, 4); key(4, 0);                                   // o k
+            key(0, 2);                                              // "
+            key(7, 7);                                              // Enter
+        end
+
+        // +TYPE_SHIFTTEST: "ab", a Shift tap, "ab", a Shift tap, "ab", Enter -
+        // what a Shift press does to the case of what follows
+        if ($test$plusargs("TYPE_SHIFTTEST")) begin
+            if (!$value$plusargs("TYPE_MS=%d", type_ms)) type_ms = 2200;
+            #(type_ms * 64'd1000000);
+            $display("[tb] %0t shift test; matrix row 6 = %b", $time, uut.io.keys[6]);
+            key(2, 6); key(2, 7);                                   // a b
+            shift_down; shift_up;
+            $display("[tb] %0t after a Shift tap: matrix row 6 = %b", $time, uut.io.keys[6]);
+            key(2, 6); key(2, 7);                                   // a b
+            shift_down; shift_up;
+            $display("[tb] %0t after a Shift tap: matrix row 6 = %b", $time, uut.io.keys[6]);
+            key(2, 6); key(2, 7);                                   // a b
+            key(7, 7);                                              // Enter
+        end
+
+        // +TYPE_CLOAD: cload"TEST Enter, then "run" Enter 300 ms before the end.
+        // +CLOAD_VAR=<n> picks the spelling; 2 (the default) is cload"TEST
+        // with Shift held from the quote to the end of the name.  Measured
+        // 4 Sep 2026 (with the matrix polarity of ports.v still wrong):
+        // 0 CLOAD with Shift held and 3 lowercase cload both get
+        // "? 2 Error" (a syntax error: this ROM's CLOAD wants its string),
+        // 1 the Shift+F2 macro types nothing the ROM takes; 4 is 2 with
+        // Shift tapped around each letter of the name.
+        if ($test$plusargs("TYPE_CLOAD")) begin
+            if (!$value$plusargs("TYPE_MS=%d", type_ms)) type_ms = 2200;
+            if (!$value$plusargs("CLOAD_VAR=%d", cload_var)) cload_var = 2;
+            #(type_ms * 64'd1000000);
+            $display("[tb] %0t typing cload (variant %0d)", $time, cload_var);
+            case (cload_var)
+                0: begin
+                    shift_down;
+                    key(3, 0); key(4, 1); key(4, 4); key(2, 6); key(3, 1);   // C L O A D
+                    shift_up;
+                end
+                1: begin
+                    shift_down; key(6, 6); shift_up;                        // Shift+F2
+                end
+                2: begin
+                    key(3, 0); key(4, 1); key(4, 4); key(2, 6); key(3, 1);   // c l o a d
+                    key(0, 2);                                              // " (the 2 key unshifted: symbols are unshifted on this ROM)
+                    shift_down;
+                    key(5, 1); key(3, 2); key(5, 0); key(5, 1);             // T E S T, mkcas.py's name
+                    shift_up;
+                end
+                4: begin
+                    key(3, 0); key(4, 1); key(4, 4); key(2, 6); key(3, 1);   // c l o a d
+                    shift_down; key(0, 2); shift_up;                        // "
+                    shift_down; key(5, 1); shift_up;                        // T E S T, Shift around each
+                    shift_down; key(3, 2); shift_up;
+                    shift_down; key(5, 0); shift_up;
+                    shift_down; key(5, 1); shift_up;
+                end
+                default: begin
+                    key(3, 0); key(4, 1); key(4, 4); key(2, 6); key(3, 1);   // c l o a d
+                end
+            endcase
+            key(7, 7);                                              // Enter
+            #((run_ms - type_ms - 300) * 64'd1000000);
+            $display("[tb] %0t typing run (tape position %0d)", $time, uut.tp.position);
+            key(4, 7); key(5, 2); key(4, 3);                        // r u n
+            key(7, 7);
+            #(300 * 64'd1000000);
+        end else
+        #(run_ms * 64'd1000000);
         $display("[tb] %0t done: %0d video frames, leds=%b", $time, rx_frames, leds);
+        $display("[tb] tape: position %0d, running %b; sd transfers %0d", uut.tp.position, uut.tape_running, sd_xfers);
         $display("[tb] config checks: %0d wrong", cfg_errs);
         $display("[tb] cpu: %0d opcode fetches, %0d I/O cycles, %0d interrupts taken of %0d raised, %0d wait states",
                  m1_count, io_count, inta_count, irq_count, wait_count);
@@ -289,7 +547,7 @@ module tb_top;
     reg     tracing = 1'b0;
     initial begin
         if (!$value$plusargs("TRACE_MS=%d", trace_ms)) trace_ms = 0;
-        if (trace_ms > 0) #(trace_ms * 1000000);
+        if (trace_ms > 0) #(trace_ms * 64'd1000000);
         tracing = 1'b1;
     end
 
@@ -435,6 +693,18 @@ module tb_top;
     end
     final if ($test$plusargs("RAMDUMP")) $writememh("sim/out/ram.hex", ram.mem, 0, 32767);
 
+    integer sd_xfers = 0;
+    always @(posedge uut.clk) if (uut.sd_rdone) sd_xfers = sd_xfers + 1;
+
+    // the tape motor (port 82h bit 4), with the player's position: where
+    // the ROM's loader started and stopped
+    reg motor_d = 1'b0;
+    always @(posedge uut.clk) begin
+        motor_d <= uut.tape_motor;
+        if (uut.tape_motor != motor_d)
+            $display("[tb] %0t tape motor %s at position %0d", $time, uut.tape_motor ? "on" : "off", uut.tp.position);
+    end
+
     integer vid_fetches = 0;
     always @(posedge uut.clk) if (uut.vid_req) vid_fetches = vid_fetches + 1;
 
@@ -544,13 +814,14 @@ module tb_top;
     integer written = 0, ppm_max;
     reg     want_ppm = 0;
     reg [255:0] fname;
-    integer ppm_from;
+    integer ppm_from, ppm_every;
     reg     ppm_armed = 1'b0;
     initial begin
         want_ppm = $test$plusargs("VIDEO_PPM");
         if (!$value$plusargs("PPM_MAX=%d", ppm_max)) ppm_max = 4;
         if (!$value$plusargs("PPM_FROM=%d", ppm_from)) ppm_from = 0;
-        if (ppm_from > 0) #(ppm_from * 1000000);
+        if (!$value$plusargs("PPM_EVERY=%d", ppm_every)) ppm_every = 1;
+        if (ppm_from > 0) #(ppm_from * 64'd1000000);
         ppm_armed = 1'b1;
     end
 
@@ -609,7 +880,7 @@ module tb_top;
                 rx_vs   = c0[1];
                 if (rx_vs && !rx_vs_d) begin      // a frame just ended
                     if (rx_frames > 0 && want_ppm && ppm_armed &&
-                        written < ppm_max) write_ppm;
+                        written < ppm_max && (rx_frames % ppm_every) == 0) write_ppm;
                     rx_frames = rx_frames + 1;
                     rx_h_last = rx_y;
                     rx_x = 0; rx_y = 0;

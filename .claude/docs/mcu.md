@@ -50,21 +50,44 @@ and УДЛ, `-` is СТРН.
 ## The menu
 
 ```
-PK8000 Nano                      Hardware
-  Reset                  (R)       Volume:    Mute|33%|66%|100%   (A)
-  Hardware  >                      Beeper:    Mute|On             (b)
-  About     >                      CPU waits: Off|On              (w)
-  Save settings                    Joysticks: Normal|Swapped      (j)
+PK8000 Nano                  Hardware
+  Tape:        <file>          Expansion:  None|Floppy|IDE|ROM disk  (x)
+  Floppy A:    <file>          ROM disk:   <file>
+  Floppy B:    <file>          Tape:       Stop|Play                  (T)
+  Hard disk:   <file>          Rewind tape                            (e, a button)
+  Run .bas:    <file>          AY card:    Off|On                     (y)
+  Reset               (R)
+  Hardware  >                  Volume:     Mute|33%|66%|100%          (A)
+  About     >                  Beeper:     Mute|On                    (b)
+  Save settings                CPU waits:  Off|On                     (w)
+                               Joysticks:  Normal|Swapped             (j)
+                               Floppy A prot.: Off|On                 (p)
+                               Floppy B prot.: Off|On                 (q)
+                               HDD prot.:  Off|On                     (K)
 ```
 
-The letters are `sysctrl.v`'s CMD 4 ids, and a value needs three edits:
+The file entries are `sdc_image_open` slots: 0 tape (`.cas`), 1 and 2
+floppies (`.fdd`), 3 hard disk (`.img`, `.hdd`), 4 ROM disk (`.bin`,
+`.rom`); `sd_card.v`'s `image_mounted` index is the same number.
+"Run .bas" is drive 5 in the file selector but not a slot: choosing a
+file there calls `bas_run()` (`bas.c`), which resets the machine, waits
+three seconds for BASIC's prompt, tokenises the text line by line with
+the ROM's own table (`pk8000_tokens.h`, generated from the ROM by
+`tools/mkcas.py --header`) and sends each line to its address at 4001h
+through the SYS target's command 6 (`sysctrl.v`, `poke.v`: an address,
+then bytes), then the three end-of-program pointers at F930h, then
+"run" and Enter through the keyboard path.  `make bas-test` runs the
+tokeniser on the host against `tools/mkcas.py`; the settings file does
+not re-run the last `.bas` at power-up.  The
+letters are `sysctrl.v`'s CMD 4 ids, and a value needs three edits:
 the letter in the form string, an entry in `variables_pk8000[]` (the
-default), and a case in `sysctrl.v`.  "Save settings" writes
-`/pk8000.ini` on the card; at start every variable is sent once.
-"Reset" sends R=1 then R=0; at power-up the firmware sends R=3 (cold
-boot) and R=0 when it has sent the rest.  The version at the right of
-the main form's caption is the first line of `VERSION`, read by
-`CMakeLists.txt` into `CORE_VERSION`.
+default), and a case in `sysctrl.v`.  A button other than Reset and
+Save sends its letter as 1 then 0 and leaves the OSD open.  "Save
+settings" writes `/pk8000.ini` on the card; at start every variable is
+sent once (A b w j x T y p q K, then R 3 and R 0).  The Hardware form
+scrolls; its return to the main form is by form number.  The version
+at the right of the main form's caption is the first line of
+`VERSION`, read by `CMakeLists.txt` into `CORE_VERSION`.
 
 "About" is a page of text (`about_pk8000[]`, menu.c) wrapped to the
 OSD's width; its Cyrillic needs glyphs the u8g2 checkout lacks, so
@@ -78,10 +101,12 @@ way to see whether a label and its value fit the 128 pixels.
 ## The SD card
 
 The card is in the Tang's slot and `sd_card.v` reads it; the firmware's
-FatFs goes through that module over SPI.  So a settings file works
-without any disk emulation in the FPGA - and disk images do not yet:
-`top.v` ties the sector request lines off.  A tape player or a floppy
-controller will take the slot interface UKNC Nano's `fdd4.v` used.
+FatFs goes through that module over SPI, and the machine's images go
+the other way: a request from the FPGA is an interrupt, the MCU reads
+which slot and which sector, translates it through the file's cluster
+map and drives the card, and the bytes land in the FPGA
+(`.claude/docs/fpga.md`, the SD path).  Write protection is the
+FPGA's: the letters p, q, K reach `fdc.v` and `ide.v`.
 
 ## The SPI link
 

@@ -86,7 +86,11 @@ assign beeper      = p1c[7];
 reg [7:0] p2a = 8'h00;
 reg [7:0] p2c = 8'h00;
 
-assign vmode    = {p2a[4], ~p2a[5]};   // Emu80: bit 4 graphics; bit 5 -> mode 0 (text) or 3 (blank)
+// Emu80's Pk8000Ppi8255Circuit2::setPortA: bit 4 set -> bit 5 ? 3 : 2,
+// bit 4 clear -> bit 5 ? 0 : 1.  So the low bit is bit 5 XNOR bit 4.
+// The first version had ~bit 5 for both halves and showed border only
+// for the ROM's SCREEN 2 (84h = 10h); found by the graphics demo, 4 Sep 2026.
+assign vmode    = {p2a[4], ~(p2a[4] ^ p2a[5])};
 assign vbank    = p2a[7:6];
 assign blanking = ~p2c[4];
 
@@ -109,7 +113,13 @@ assign col_base = ~r93[3];
 
 //------------------------------------------------------------------------
 // The keyboard: ten rows of eight, a row reads as a byte with a pressed
-// key low.  Rows 10..15 read all ones, as on the machine.
+// key low.  Rows 10..15 read all ones, as on the machine.  The byte from
+// the MCU is the code for a press and the code with bit 7 for a release
+// (usb_host.c's kbd_tx), so bit 7 IS the level the matrix wants.  The
+// first version wrote its inverse: every key went down at its release
+// and stayed down, the ROM typed each key once at that edge, and a
+// Shift was held for ever after its first use - "1+INPRT", "cload"TEST",
+// the case inverted after a Shift, all of it (4 Sep 2026).
 //------------------------------------------------------------------------
 reg [7:0] keys [0:15];
 integer ki;
@@ -123,7 +133,7 @@ always @(posedge clk) begin
     if (reset) begin
         for (ki = 0; ki < 16; ki = ki + 1) keys[ki] <= 8'hFF;
     end else if (kbd_stb && kbd_byte[6:0] != 7'd0 && krow < 4'd10) begin
-        keys[krow][kcol] <= ~kbd_byte[7];
+        keys[krow][kcol] <= kbd_byte[7];
     end
 end
 

@@ -15,6 +15,8 @@
 #                    (refuses a layout that fails the timing gate)
 #   make timing      the timing gate alone, on the last PnR report
 #   make menu-test   the OSD menu on the host: forms, keys, layout
+#   make bas-test    the firmware's BASIC tokeniser on the host against tools/mkcas.py
+#   make tokens      regenerate mnano/pk8000_tokens.h from the ROM (tools/mkcas.py)
 #   make fw          build the BL616 firmware -> build/fw/bl616.bin
 #   make rom         regenerate tang/src/pk8000/pk8000_rom.v from tang/rom/
 #   make waits       regenerate tang/src/pk8000/waits_rom.v (tools/waits_rom.py)
@@ -44,14 +46,14 @@ PYTHON   := python3
 # The design's file list comes out of the Gowin project file, so it can
 # never drift from what the IDE builds.
 RTL      := $(shell $(PYTHON) $(TOOLS)/srcs.py)
-STUBS    := sim/stubs/gowin_ip_sim.v sim/stubs/sdram_model.v
+STUBS    := sim/stubs/gowin_ip_sim.v sim/stubs/sdram_model.v sim/stubs/sd_card_sim.v
 TB       := sim/tb/tb_top.v
 SIMBIN   := $(BUILD)/sim/obj/tb_top
 SIMBINW  := $(BUILD)/sim/objw/tb_top_w
 
 VFLAGS   := -Wno-fatal --timing -j 4
 
-ROMHEX   := $(BUILD)/mif/pk8000_rom.hex
+ROMHEX   := $(BUILD)/mif/pk8000_rom.hex $(BUILD)/mif/fdc_rom.hex $(BUILD)/mif/hdd_rom.hex
 
 # The BASIC ROM takes about a second of machine time to reach its prompt.
 RUN_MS   ?= 1200
@@ -70,7 +72,7 @@ FW_BOARD := bl616dk -DCMAKE_C_FLAGS=-DM0S_DOCK=1 -DCONFIG_BT_STACK_CLI=0
 FW_OUT   := mnano/build/build_out/misterynano_fw_bl616.bin
 
 .PHONY: all toolchain lint sim wave frames fw rom waits mif clean bitstream \
-        flash-fpga flash-fpga-flash flash-mcu help menu-test timing
+        flash-fpga flash-fpga-flash flash-mcu help menu-test bas-test tokens timing
 
 all: lint
 
@@ -93,12 +95,26 @@ $(VERILATOR):
 #-----------------------------------------------------------------------
 mif: $(ROMHEX)
 
-$(ROMHEX): tang/rom/pk8000_v12.rom $(TOOLS)/mif.py
+$(BUILD)/mif/pk8000_rom.hex: tang/rom/pk8000_v12.rom $(TOOLS)/mif.py
+	@mkdir -p $(dir $@)
+	$(PYTHON) $(TOOLS)/mif.py binhex $< $@
+
+$(BUILD)/mif/fdc_rom.hex: tang/rom/pk8000_fdc.rom $(TOOLS)/mif.py
+	@mkdir -p $(dir $@)
+	$(PYTHON) $(TOOLS)/mif.py binhex $< $@
+
+$(BUILD)/mif/hdd_rom.hex: tang/rom/pk8000_hdd.rom $(TOOLS)/mif.py
 	@mkdir -p $(dir $@)
 	$(PYTHON) $(TOOLS)/mif.py binhex $< $@
 
 rom:
 	$(PYTHON) $(TOOLS)/bin2prom.py tang/rom/pk8000_v12.rom tang/src/pk8000/pk8000_rom.v -m pk8000_rom
+	$(PYTHON) $(TOOLS)/bin2prom.py tang/rom/pk8000_fdc.rom tang/src/pk8000/fdc_rom.v -m fdc_rom
+	$(PYTHON) $(TOOLS)/bin2prom.py tang/rom/pk8000_hdd.rom tang/src/pk8000/hdd_rom.v -m hdd_rom
+
+# a .cas of a one-line BASIC program, for the tape test (make sim SIMARGS="+TAPE=soft/hello.cas +TYPE_CLOAD")
+soft/hello.cas: $(TOOLS)/mkcas.py
+	$(PYTHON) $(TOOLS)/mkcas.py $@
 
 waits:
 	$(PYTHON) $(TOOLS)/waits_rom.py > tang/src/pk8000/waits_rom.v
@@ -189,6 +205,18 @@ FATFS_SRC := $(TOOLS)/bouffalo_sdk/components/fs/fatfs
 MENU_TEST_SRC := mnano/menu_test.c mnano/menu.c \
   $(wildcard mnano/u8g2/csrc/*.c) mnano/u8g2/sys/bitmap/common/u8x8_d_bitmap.c \
   $(FATFS_SRC)/ff.c $(FATFS_SRC)/ffunicode.c
+# The tokeniser the firmware uses for "Run .bas" (mnano/bas.c) against the
+# one tools/mkcas.py uses for a .cas: the same bytes for soft/demo.bas.
+bas-test: mnano/bas.c mnano/bas_test.c mnano/pk8000_tokens.h soft/demo.bas
+	@mkdir -p $(BUILD)/menu
+	$(CC) -O -Wall -DBAS_HOST_TEST -Imnano -o $(BUILD)/menu/bas_test mnano/bas.c mnano/bas_test.c
+	$(BUILD)/menu/bas_test soft/demo.bas $(BUILD)/menu/demo_fw.tok
+	$(PYTHON) $(TOOLS)/mkcas.py --tok $(BUILD)/menu/demo_py.tok soft/demo.bas
+	cmp $(BUILD)/menu/demo_fw.tok $(BUILD)/menu/demo_py.tok && echo "bas-test: ok"
+
+tokens:
+	$(PYTHON) $(TOOLS)/mkcas.py --header mnano/pk8000_tokens.h
+
 menu-test: $(MENU_TEST_SRC) mnano/menu.h VERSION
 	@test -d $(FATFS_SRC) || { echo "bouffalo_sdk missing - run: make toolchain" >&2; exit 1; }
 	@mkdir -p $(BUILD)/menu

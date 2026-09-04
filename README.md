@@ -22,12 +22,23 @@ vm80a (1801BM1/Vslav, CC-BY 3.0), точная копия кристалла 580
   16 цветов; экран по HDMI 768×576 при родных 50,73 Гц.
 - ПЗУ Бейсика 1.2 («Сура»/«Хобби»), 64 КБ ОЗУ.
 - Клавиатура USB, переведённая в матрицу 10×8; два USB-джойстика.
-- Бипер по HDMI и I²S.
-- Меню по **F12**: сброс, громкость, бипер, задержки процессора, обмен
-  джойстиков, «About», сохранение настроек на карту.
+- Магнитофон: файлы `.cas` с карты воспроизводятся на вход магнитофона
+  (`CLOAD`, `LOAD`, `BLOAD`); записи пока нет.
+- Дисковод НГМД (КР1818ВГ93 с его ПЗУ) - два дисковода из файлов `.fdd`.
+- IDE/CF-адаптер сообщества с его ПЗУ - образ `.img` на карте; в
+  `soft/cf.img` - 2 МБ образ из поставки Emu80 с большинством программ.
+- ROM-диск (картридж, порт 77h) - файл `.bin` загружается в SDRAM.
+- Звуковая карта AY-3-8910 на портах 14h/15h.
+- Бипер и AY по HDMI и I²S.
+- Меню по **F12**: образы, «Run .bas» (текстовая программа на Бейсике с
+  карты - сразу в память машины, как будто набрана), «Expansion» (что
+  стоит в слоте расширения: дисковод, IDE или ROM-диск - по одному),
+  магнитофон, AY, громкость, бипер, задержки процессора, джойстики,
+  защита записи, «About», сохранение настроек на карту.
+- В `soft/`: образ CF из Emu80, системная дискета с AY-плеером, демо
+  четырёх экранных режимов (`.bas` и `.cas`).
 
-Чего пока нет: магнитофона (`.cas` с карты), дисковода (НГМД, `.fdd`),
-IDE-адаптера, ROM-диска, звуковой карты AY.  Порядок - в
+Чего пока нет: записи на магнитофон, принтера.  Состояние и порядок - в
 `.claude/docs/progress.md`.
 
 ## Что нужно
@@ -120,13 +131,24 @@ prompt in simulation.  Not yet run on a board.**
   16 colours, over HDMI as 768x576 at the machine's own 50.73 Hz.
 - BASIC 1.2 ROM (Сура/Хобби), 64 KB RAM.
 - A USB keyboard translated into the 10x8 matrix; two USB joysticks.
-- The beeper over HDMI and I²S.
-- A menu on **F12**: reset, volume, beeper, CPU waits, joystick swap,
-  About, settings saved to the card.
+- Tape: `.cas` files from the card play into the tape input (`CLOAD`,
+  `LOAD`, `BLOAD`); no recording yet.
+- The НГМД floppy (a КР1818ВГ93 with its ROM), two drives from `.fdd` files.
+- The community IDE/CF adapter with its ROM, an `.img` on the card;
+  `soft/cf.img` is Emu80's 2 MB image with most of the software.
+- The ROM disk cartridge (port 77h), a `.bin` loaded into the SDRAM.
+- The AY-3-8910 sound card at 14h/15h.
+- The beeper and the AY over HDMI and I²S.
+- A menu on **F12**: the images, "Run .bas" (a plain-text BASIC program
+  from the card straight into the machine's memory, as if typed),
+  "Expansion" (what is in the expansion slot: the floppy, the IDE or the
+  ROM disk, one at a time), tape, AY, volume, beeper, CPU waits,
+  joysticks, write protection, About, settings saved to the card.
+- In `soft/`: Emu80's CF image, a system floppy with the AY player, a
+  four-mode graphics demo as `.bas` and `.cas`.
 
-Not yet: tape (`.cas` from the card), the floppy (НГМД, `.fdd`), the
-IDE adapter, the ROM disk, the AY sound card.  `.claude/docs/progress.md`
-has the order.
+Not yet: recording to tape, the printer.  `.claude/docs/progress.md`
+has the state.
 
 ## What you need
 

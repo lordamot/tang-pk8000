@@ -1,0 +1,33 @@
+continue work on implementing hardware
+
+****
+
+The 0.2.0 peripheral layer that was in the tree uncommitted - tape, floppy, IDE, ROM disk, AY, the SD arbiter, the menu - had never been through the real build or a simulation. Now it has: it builds, lints, simulates and meets timing. No bitstream has been on a board.
+
+Built and timed, bin/tang.fs and bin/bl616.bin rebuilt:
+
+Logic 29%   Register 17%   BSRAM 25/46 (55%)   clk30 62.8 MHz   0 violations
+
+Simulated, with frames as the evidence:
+- IDE: Emu80's CF image boots through the adapter's ROM to its P/M 2.2 prompt.
+- Floppy: the НГМД ROM reads a blank disk's boot sector through the ВГ93 and falls to BASIC.
+- Tape: cload"TEST loads soft/hello.cas, "run" prints TAPE OK.
+- Keyboard: "print 1+1" answers 2.
+
+Defects found and fixed on the way, in order:
+1. Gowin refuses wd1793.sv's default_nettype none and its read-before-write buffer RAM; lint had passed both. Directive removed, buffer write-through.
+2. sd_arbiter.v dropped the request one clock after the grant because every client drops rd on ack; no peripheral ever got a sector. It latches the direction and sector and holds the request until the card is busy.
+3. ide.v and tape.v lost the mount pulse under CPU reset, and the firmware mounts while it holds reset. The IDE BIOS sat at "Reset...". The bookkeeping is outside reset now.
+4. ports.v wrote the keyboard release bit inverted: a key went down at its release and Shift stayed down for ever after its first use. This is what 0.1.0's "1+INPRT" and the three differing typing runs were.
+5. tools/mkcas.py used MSX tokens; this ROM's are its own (PRINT 95h, END ECh), so it now reads the table from the ROM. The loader also reads eight bytes past the program's end, so the trailer is sixteen zeros.
+6. Testbench: ms delays overflowed 32 bits past 4.29 s, and +TYPE prefix-matched +TYPE_CLOAD.
+
+ROM facts measured: CLOAD needs cload"NAME; the digit row gives digits under Shift and symbols without (the 2 key alone is the quote), which is what Emu80's smart layout implies.
+
+Not shown: the ROM disk and the AY card (no image, no program), floppy writing, drive B, a system disk, the real card, a monitor's opinion of 50.73 Hz.
+
+Docs updated: progress.md rewritten for 0.2.0, CLAUDE.md traps, platform.md, build.md, fpga.md, CHANGELOG. The sim runs 15 ms/s on this host and the runs are independent, so I ran them in parallel from scratch dirs; build.md says how.
+
+prompts/ had no entry for the session that built 0.2.0, so I cannot reconstruct that exchange.
+
+Nothing is committed. All of this is one uncommitted 0.2.0 tree; shall I commit it as a single "0.2.0 alpha: the peripherals" commit?

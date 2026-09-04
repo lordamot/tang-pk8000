@@ -5,7 +5,7 @@
 
 // up to four image files can be open. E.g. two
 // floppy disks and two ACSI hard drives
-#define MAX_DRIVES  5
+#define MAX_DRIVES  6   // 0..4 are sd_card.v's image slots, 5 the .bas file (bas.h BAS_DRIVE)
 
 // fatfs mounts the card under /sd
 #define CARD_MOUNTPOINT "/sd"

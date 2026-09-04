@@ -83,7 +83,7 @@ table.detail_table th.label {  min-width: 8%; width: 8%; }
 </tr>
 <tr>
 <td class="label">Created Time</td>
-<td>Fri Sep  4 10:04:55 2026
+<td>Fri Sep  4 17:33:31 2026
 </td>
 </tr>
 <tr>
@@ -97,24 +97,24 @@ table.detail_table th.label {  min-width: 8%; width: 8%; }
 <tr>
 <td class="label">Place & Route Process</td>
 <td>Running placement:
-   Placement Phase 0: CPU time = 0h 0m 0.219s, Elapsed time = 0h 0m 0.219s
-   Placement Phase 1: CPU time = 0h 0m 0.144s, Elapsed time = 0h 0m 0.144s
-   Placement Phase 2: CPU time = 0h 0m 0.456s, Elapsed time = 0h 0m 0.456s
-   Placement Phase 3: CPU time = 0h 0m 0.631s, Elapsed time = 0h 0m 0.633s
-   Total Placement: CPU time = 0h 0m 1s, Elapsed time = 0h 0m 1s
+   Placement Phase 0: CPU time = 0h 0m 0.608s, Elapsed time = 0h 0m 0.608s
+   Placement Phase 1: CPU time = 0h 0m 0.229s, Elapsed time = 0h 0m 0.229s
+   Placement Phase 2: CPU time = 0h 0m 2s, Elapsed time = 0h 0m 2s
+   Placement Phase 3: CPU time = 0h 0m 1s, Elapsed time = 0h 0m 1s
+   Total Placement: CPU time = 0h 0m 4s, Elapsed time = 0h 0m 4s
 Running routing:
-   Routing Phase 0: CPU time = 0h 0m 0.001s, Elapsed time = 0h 0m 0.001s
-   Routing Phase 1: CPU time = 0h 0m 0.148s, Elapsed time = 0h 0m 0.148s
-   Routing Phase 2: CPU time = 0h 0m 1s, Elapsed time = 0h 0m 1s
+   Routing Phase 0: CPU time = 0h 0m 0.002s, Elapsed time = 0h 0m 0.002s
+   Routing Phase 1: CPU time = 0h 0m 0.241s, Elapsed time = 0h 0m 0.241s
+   Routing Phase 2: CPU time = 0h 0m 5s, Elapsed time = 0h 0m 5s
    Routing Phase 3: CPU time = 0h 0m 0s, Elapsed time = 0h 0m 0s
-   Total Routing: CPU time = 0h 0m 2s, Elapsed time = 0h 0m 2s
+   Total Routing: CPU time = 0h 0m 5s, Elapsed time = 0h 0m 5s
 Generate output files:
-   CPU time = 0h 0m 0.689s, Elapsed time = 0h 0m 0.696s
+   CPU time = 0h 0m 2s, Elapsed time = 0h 0m 2s
 </td>
 </tr>
 <tr>
 <td class="label">Total Time and Memory Usage</td>
-<td>CPU time = 0h 0m 4s, Elapsed time = 0h 0m 4s, Peak memory usage = 436MB</td>
+<td>CPU time = 0h 0m 10s, Elapsed time = 0h 0m 10s, Peak memory usage = 465MB</td>
 </tr>
 </table>
 <br/>
@@ -129,23 +129,23 @@ Generate output files:
 </tr>
 <tr>
 <td class="label">Logic</td>
-<td>3542/20736</td>
-<td>18%</td>
+<td>6143/20736</td>
+<td>30%</td>
 </tr>
 <tr>
 <td class="label">&nbsp &nbsp --LUT,ALU,ROM16</td>
-<td>3434(3165 LUT, 269 ALU, 0 ROM16)</td>
+<td>5963(5475 LUT, 488 ALU, 0 ROM16)</td>
 <td>-</td>
 </tr>
 <tr>
 <td class="label">&nbsp &nbsp --SSRAM(RAM16)</td>
-<td>18</td>
+<td>30</td>
 <td>-</td>
 </tr>
 <tr>
 <td class="label">Register</td>
-<td>1555/15915</td>
-<td>10%</td>
+<td>2627/15915</td>
+<td>17%</td>
 </tr>
 <tr>
 <td class="label">&nbsp &nbsp --Logic Register as Latch</td>
@@ -154,8 +154,8 @@ Generate output files:
 </tr>
 <tr>
 <td class="label">&nbsp &nbsp --Logic Register as FF</td>
-<td>1541/15552</td>
-<td>10%</td>
+<td>2611/15552</td>
+<td>17%</td>
 </tr>
 <tr>
 <td class="label">&nbsp &nbsp --I/O Register as Latch</td>
@@ -164,13 +164,13 @@ Generate output files:
 </tr>
 <tr>
 <td class="label">&nbsp &nbsp --I/O Register as FF</td>
-<td>14/363</td>
-<td>4%</td>
+<td>16/363</td>
+<td>5%</td>
 </tr>
 <tr>
 <td class="label">CLS</td>
-<td>2372/10368</td>
-<td>23%</td>
+<td>4026/10368</td>
+<td>39%</td>
 </tr>
 <tr>
 <td class="label">I/O Port</td>
@@ -204,8 +204,8 @@ Generate output files:
 </tr>
 <tr>
 <td class="label">BSRAM</td>
-<td>2 SDPB<br/>1 DPB<br/>8 pROM<br/></td>
-<td>24%</td>
+<td>6 SDPB<br/>2 DPB<br/>17 pROM<br/></td>
+<td>55%</td>
 </tr>
 </table>
 <h2><a name="I/O_Bank_Usage_Summary">I/O Bank Usage Summary:</a></h2>
@@ -262,8 +262,8 @@ Generate output files:
 </tr>
 <tr>
 <td class="label">LW</td>
-<td>4/8</td>
-<td>50%</td>
+<td>8/8</td>
+<td>100%</td>
 </tr>
 <tr>
 <td class="label">GCLK_PIN</td>
@@ -302,7 +302,12 @@ Generate output files:
 <tr>
 <td class="label">m0s_in[3]</td>
 <td>PRIMARY</td>
-<td> BR</td>
+<td> TR BR</td>
+</tr>
+<tr>
+<td class="label">f1</td>
+<td>LW</td>
+<td> -</td>
 </tr>
 <tr>
 <td class="label">leds_d_0_4</td>
@@ -310,12 +315,27 @@ Generate output files:
 <td> -</td>
 </tr>
 <tr>
-<td class="label">keys_RAMOUT_383_G[7]_8</td>
+<td class="label">keys_RAMOUT_383_G[7]_7</td>
 <td>LW</td>
 <td> -</td>
 </tr>
 <tr>
 <td class="label">sd_card/sd_rw/busy_Z</td>
+<td>LW</td>
+<td> -</td>
+</tr>
+<tr>
+<td class="label">fd/n50_6</td>
+<td>LW</td>
+<td> -</td>
+</tr>
+<tr>
+<td class="label">hd/n566_5</td>
+<td>LW</td>
+<td> -</td>
+</tr>
+<tr>
+<td class="label">snd/n43_5</td>
 <td>LW</td>
 <td> -</td>
 </tr>

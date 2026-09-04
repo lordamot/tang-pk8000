@@ -36,11 +36,11 @@
 // phase 6.  Refresh takes a video slot the video is not using; it needs
 // one every 7.8 us and the video leaves at least one in four free.
 //
-// Two banks of 16 bits behind an 8-bit machine: byte address a[15:1] is
-// the word, a[0] picks the lane by DQM on a write and by a mux on a
-// read.  Only bank 0, rows 0..127, columns 0..255 are used - 64 KB of a
-// 64 Mbit part.  The rest is there for a ROM disk or a hard disk cache
-// later.
+// Two banks of 16 bits behind an 8-bit machine: byte address a[21:1] is
+// the word ([21:20] the bank, [19:9] the row, [8:1] the column), a[0]
+// picks the lane by DQM on a write and by a mux on a read.  The machine's
+// 64 KB is the first 64 KB; the ROM disk cartridge's image lives above it
+// (romdisk.v, from 10000h).
 //
 // Initialisation, from sdram2.v's hard-won sequence (UKNC Nano, Sep
 // 2026): a JEDEC part wants 100 us of stable clock before its first
@@ -58,13 +58,13 @@ module sdram (
     // CPU port: cpu_req is a one-clock pulse at tphase 7
     input             cpu_req,
     input             cpu_we,
-    input      [15:0] cpu_adr,
+    input      [21:0] cpu_adr,      // byte address: [21:20] bank, [19:9] row, [8:1] column
     input      [7:0]  cpu_wdata,
     output reg [7:0]  cpu_rdata,
 
     // video port: vid_req is a one-clock pulse at tphase 1
     input             vid_req,
-    input      [15:0] vid_adr,
+    input      [21:0] vid_adr,
     output reg [7:0]  vid_rdata,
     output reg        vid_ack,      // one clock, with vid_rdata
 
@@ -128,7 +128,7 @@ reg  [2:0] ref_due = 3'd0;
 reg         act      = 1'b0;      // this slot has a request
 reg         act_we   = 1'b0;
 reg         act_vid  = 1'b0;
-reg  [15:0] act_adr  = 16'd0;
+reg  [21:0] act_adr  = 22'd0;
 reg  [7:0]  act_data = 8'd0;
 
 always @(posedge clk) begin
@@ -185,16 +185,16 @@ always @(posedge clk) begin
                 act_adr  <= cpu_adr;
                 act_data <= cpu_wdata;
                 cmd      <= CMD_ACTIVE;
-                SDRAM_BA <= 2'd0;
-                SDRAM_A  <= {4'd0, cpu_adr[15:9]};
+                SDRAM_BA <= cpu_adr[21:20];
+                SDRAM_A  <= cpu_adr[19:9];
             end else if (!cpu_slot && vid_req) begin
                 act      <= 1'b1;
                 act_we   <= 1'b0;
                 act_vid  <= 1'b1;
                 act_adr  <= vid_adr;
                 cmd      <= CMD_ACTIVE;
-                SDRAM_BA <= 2'd0;
-                SDRAM_A  <= {4'd0, vid_adr[15:9]};
+                SDRAM_BA <= vid_adr[21:20];
+                SDRAM_A  <= vid_adr[19:9];
             end else if (!cpu_slot && ref_due != 3'd0) begin
                 cmd     <= CMD_AUTO_REFRESH;
                 ref_due <= ref_due - 3'd1;
@@ -203,7 +203,7 @@ always @(posedge clk) begin
         3'd1: if (act) begin
             // column with auto-precharge; the byte lane by DQM
             SDRAM_A  <= {2'b0, 1'b1, act_adr[8:1]};
-            SDRAM_BA <= 2'd0;
+            SDRAM_BA <= act_adr[21:20];
             if (act_we) begin
                 cmd        <= CMD_WRITE;
                 dq_out     <= {act_data, act_data};

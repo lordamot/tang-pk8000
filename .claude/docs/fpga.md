@@ -14,26 +14,33 @@ bitstream.
 | role | files |
 |---|---|
 | top | `top.v` - the clock, the resets, the counters, the memory map, the mix, and every instance |
-| the machine | `pk8000/vm80a.v` (the КР580ВМ80А, 1801BM1, verbatim), `pk8000/cpu8080.v` (its bus, the status decode, the interrupt, the wait model), `pk8000/waits_rom.v` (generated: the wait tables), `pk8000/sdram.v` (the 64 KB), `pk8000/pk8000_rom.v` (generated: the BASIC ROM in pROMs), `pk8000/ports.v` (the ВВ55s, video registers, keyboard, joysticks), `pk8000/video.v` (the display) |
+| the machine | `pk8000/vm80a.v` (the КР580ВМ80А, 1801BM1, verbatim), `pk8000/cpu8080.v` (its bus, the status decode, the interrupt, the wait model), `pk8000/waits_rom.v` (generated: the wait tables), `pk8000/sdram.v` (the 64 KB and the ROM disk above it), `pk8000/pk8000_rom.v` (generated: the BASIC ROM in pROMs), `pk8000/ports.v` (the ВВ55s, video registers, keyboard, joysticks), `pk8000/video.v` (the display) |
+| the peripherals | `pk8000/sd_arbiter.v` (one owner on the SD path), `pk8000/tape.v` (the cassette player), `pk8000/fdc.v` + `pk8000/wd1793.sv` (MiSTer's ВГ93) + `pk8000/fdc_rom.v` (generated), `pk8000/ide.v` + `pk8000/hdd_rom.v` (generated), `pk8000/romdisk.v`, `pk8000/ay.v` + `pk8000/ym2149.sv` (UKNC Nano's), `pk8000/poke.v` (the MCU's bytes into the RAM) |
 | clock, sound | `sys_pll.v` (rPLL by hand: 27 -> 30 MHz), `i2s_tx.v` |
 | MiSTeryNano | `mister/{mcu_spi,sysctrl,hid,osd_u8g2,sd_card,sd_rw,sdcmd_ctrl,sector_dpram}.v` - UKNC Nano's copies; `sysctrl.v` rewritten for this core's letters, `hid.v` given a keyboard strobe |
 | HDMI | `hdmi/{hdmi_tx,tmds_channel,hdmi_packet,hdmi_serdes}.v` - UKNC Nano's encoder with audio; `hdmi_tx.v` at 30 MHz with three packets an island, `hdmi_serdes.v` at 150 MHz |
 
-Stubbed in simulation (`sim/stubs/gowin_ip_sim.v`, `tools/srcs.py`'s
-`STUBBED`): `sys_pll.v`, `hdmi/hdmi_serdes.v`, `pk8000/pk8000_rom.v`,
-`mister/sector_dpram.v`.
+Stubbed in simulation (`tools/srcs.py`'s `STUBBED`): `sys_pll.v`,
+`hdmi/hdmi_serdes.v`, the three generated ROMs and `mister/sector_dpram.v`
+by `sim/stubs/gowin_ip_sim.v`; and `mister/sd_card.v` with `sd_rw.v` and
+`sdcmd_ctrl.v` by `sim/stubs/sd_card_sim.v`, which serves image files
+from the host on the same core-side interface (`+TAPE=`, `+FDDA=`,
+`+FDDB=`, `+HDD=`, `+ROMDISK=`).
 
 ## Resources
 
 ```
-Logic 17%   Register 10%   BSRAM 11/46 (24%)   PLL 2/2   [4 Sep 2026 PnR, v0.1.0]
-clk30: needs 30 MHz, makes 66.6 MHz; 0 setup, 0 hold violations
+Logic 30%   Register 17%   BSRAM 25/46 (55%)   PLL 2/2   [4 Sep 2026 PnR, v0.2.0 with poke.v]
+clk30: needs 30 MHz, makes 70.3 MHz; 0 setup, 0 hold violations
+v0.1.0 for comparison: Logic 17%, Register 10%, BSRAM 11/46, clk30 66.6 MHz
 ```
 
-BSRAM: eight blocks are the ROM, the rest the line buffer, the OSD and
-the SD sector buffers.  The machine's 64 KB is in the SDRAM, so an
-expansion ROM (the НГМД's 8 KB, the IDE adapter's 9 KB) costs four or
-five blocks and a ROM disk costs none - it goes into the SDRAM too.
+BSRAM: 17 blocks are pROMs - the BASIC ROM's eight, the НГМД's four,
+the IDE adapter's five - and the other eight the line buffer, the OSD,
+`sd_card.v`'s sector buffer and the peripherals' own (the tape's two
+sectors, the ВГ93's 2 KB, the IDE's and the ROM disk's 512 bytes).  The
+machine's 64 KB and the ROM disk are in the SDRAM.  The peripherals
+took 12% of the logic and 7% of the registers between them.
 
 ## The clocks
 
@@ -135,8 +142,41 @@ The board as UKNC Nano wires it, unchanged - `README.md` has the table.
 The SDRAM is in the package and its pins are the tool's.  The USB-C
 serial (pin 69) is driven idle; the ПК8000 has no serial port.
 
+## The SD path
+
+`sd_card.v` (MiSTeryNano's) has one sector interface for the machine:
+request levels `rstart[4:0]`/`wstart[4:0]` one-hot by image slot, the
+sector within the image, then `rbusy`, the 512 bytes on
+`outen/outaddr/outbyte` (or taken from `inbyte` at `outaddr` for a
+write), and `rdone`.  The MCU sees the request as an interrupt,
+translates the sector through its file system and drives the card.
+Five clients share it through `sd_arbiter.v`: slot 0 the tape, 1 and 2
+the floppies (one controller; its drive bit picks the slot), 3 the hard
+disk, 4 the ROM disk loader.  A client raises `rd`/`wr` with its
+sector, gets `ack` as a level while it owns the path, the byte stream
+gated to it, and `done`.  Only one request ever reaches `sd_card.v` at
+a time, which the MCU's one-hot reading requires.
+
+The expansion page: `top.v` routes a page-1 read to `fdc.v`, the IDE
+ROM, or the SDRAM at `romdisk.v`'s address by the OSD's 'x', and a
+page-1 write to the RAM under it and, with the floppy in, to `fdc.v`
+as well.  `rd_src` grew from four sources to eight (RAM, ROM, ports,
+FDC, HDD ROM, AY, IDE, none).
+
+## The MCU's way into the RAM
+
+`sysctrl.v`'s CMD 6 is an address and then any number of bytes; each
+byte is a strobe into `poke.v`, a 16-deep queue that writes them
+through the SDRAM's CPU port in T-states where the CPU makes no
+request of its own - `top.v` ORs `poke_req` into `ram_req` behind
+`mem_rd`/`mem_wr` at phase 7, so the CPU never waits and never sees
+the write happen.  The ROM disk loader (which holds the CPU) has
+priority over it.  The firmware's `bas.c` uses it to put a tokenised
+BASIC program at 4001h and the ROM's pointers after it; the testbench's
+`+BAS=` does the same from a `.tok` file.
+
 ## What is not there yet
 
-The tape, the floppy, the IDE adapter, the ROM disk, the AY card, the
-printer (its port is decoded, its data goes nowhere) - all of it is in
-`.claude/docs/progress.md`.
+Recording to tape, a second thing in the expansion slot at the same
+time, the printer (its port is decoded, its data goes nowhere) - and
+everything in `.claude/docs/progress.md`.

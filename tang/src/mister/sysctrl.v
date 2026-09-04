@@ -9,6 +9,12 @@
     The letters are the OSD's (mnano/menu.c, variables_pk8000), and a
     menu value needs three edits: the letter in the form string, an entry
     in variables_pk8000[], and a line here.
+
+    CMD 6 is this core's: a write into the machine's RAM.  Address high,
+    address low, then any number of data bytes, each a strobe on
+    poke_stb with poke_adr and poke_data, the address counting up
+    (poke.v takes them into the SDRAM; mnano/bas.c sends a BASIC
+    program that way).
 */
 
 module sysctrl (
@@ -31,11 +37,22 @@ module sysctrl (
   output reg [23:0] color, // a 24bit color to e.g. be used to drive the ws2812
 
   // values that can be configured by the user
-  output reg [1:0]  system_reset,    // 'R' coldboot(3), reset(1), run(0)
-  output reg [1:0]  system_volume,   // 'A' mute(0), 33%(1), 66%(2), 100%(3)
-  output reg        system_beeper,   // 'b' 0 mute, 1 on: the beeper in the mix
-  output reg        system_waits,    // 'w' 1 = the video controller's cost paid by the CPU (cpu8080.v)
-  output reg        system_joyswap   // 'j' 1 = joystick ports exchanged
+  output reg [1:0]  system_reset,     // 'R' coldboot(3), reset(1), run(0)
+  output reg [1:0]  system_volume,    // 'A' mute(0), 33%(1), 66%(2), 100%(3)
+  output reg        system_beeper,    // 'b' 0 mute, 1 on: the beeper in the mix
+  output reg        system_waits,     // 'w' 1 = the video controller's cost paid by the CPU (cpu8080.v)
+  output reg        system_joyswap,   // 'j' 1 = joystick ports exchanged
+  output reg [1:0]  system_exp,       // 'x' expansion page 1: 0 none, 1 floppy, 2 IDE, 3 ROM disk
+  output reg        system_tape,      // 'T' 0 stop, 1 play (with the motor)
+  output reg        system_rewind,    // 'e' a level while the OSD button is down
+  output reg        system_ay,        // 'y' the AY card at 14h/15h
+  output reg [1:0]  system_fdd_wprot, // 'p' 'q' floppy A, B write-protected
+  output reg        system_hdd_wprot, // 'K' the hard disk write-protected
+
+  // CMD 6: a byte into the machine's RAM
+  output reg        poke_stb,
+  output reg [15:0] poke_adr,
+  output reg [7:0]  poke_data
 );
 
 reg [3:0] state;
@@ -65,8 +82,18 @@ always @(posedge clk) begin
       system_beeper <= 1'b1;
       system_waits  <= 1'b1;
       system_joyswap <= 1'b0;
+      system_exp    <= 2'd0;
+      system_tape   <= 1'b1;
+      system_rewind <= 1'b0;
+      system_ay     <= 1'b1;
+      system_fdd_wprot <= 2'b00;
+      system_hdd_wprot <= 1'b0;
+      poke_stb <= 1'b0;
+      poke_adr <= 16'd0;
    end else begin
       int_ack <= 8'h00;
+      poke_stb <= 1'b0;
+      if(poke_stb) poke_adr <= poke_adr + 16'd1;   // the clock after a byte
 
       // iack bit 0 acknowledges the coldboot notification
       if(int_ack[0]) coldboot <= 1'b0;
@@ -80,8 +107,6 @@ always @(posedge clk) begin
 
             // CMD 0: status data
             if(command == 8'd0) begin
-                // return some pattern that would not appear randomly
-                // on e.g. an unprogrammed device
                 if(state == 4'd1) data_out <= 8'h5c;
                 if(state == 4'd2) data_out <= 8'h42;
                 if(state == 4'd3) data_out <= 8'h07;   // core id 7 = PK8000 (mnano/sysctrl.h)
@@ -106,7 +131,6 @@ always @(posedge clk) begin
 
             // CMD 4: config values (e.g. set by user via OSD)
             if(command == 8'd4) begin
-                // second byte can be any character which identifies the variable to set
                 if(state == 4'd1) id <= data_in;
 
                 if(state == 4'd2) begin
@@ -115,16 +139,26 @@ always @(posedge clk) begin
                     if(id == "b") system_beeper  <= data_in[0];
                     if(id == "w") system_waits   <= data_in[0];
                     if(id == "j") system_joyswap <= data_in[0];
+                    if(id == "x") system_exp     <= data_in[1:0];
+                    if(id == "T") system_tape    <= data_in[0];
+                    if(id == "e") system_rewind  <= data_in[0];
+                    if(id == "y") system_ay      <= data_in[0];
+                    if(id == "p") system_fdd_wprot[0] <= data_in[0];
+                    if(id == "q") system_fdd_wprot[1] <= data_in[0];
+                    if(id == "K") system_hdd_wprot <= data_in[0];
                 end
+            end
+
+            // CMD 6: a write into RAM - address, then the bytes
+            if(command == 8'd6) begin
+                if(state == 4'd1) poke_adr[15:8] <= data_in;
+                if(state == 4'd2) poke_adr[7:0]  <= data_in;
+                if(state >= 4'd3) begin poke_data <= data_in; poke_stb <= 1'b1; end
             end
 
             // CMD 5: interrupt control
             if(command == 8'd5) begin
-                // second byte acknowleges the interrupts
                 if(state == 4'd1) int_ack <= data_in;
-
-                // interrupt[0] notifies the MCU of a FPGA cold boot e.g. if
-                // the FPGA has been loaded via USB
                 data_out <= { int_in[7:1], coldboot };
             end
          end

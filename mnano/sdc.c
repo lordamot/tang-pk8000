@@ -248,8 +248,11 @@ int sdc_is_ready(void) {
   return sdc_ready;
 }
 
+// the image slots as the PK8000 core uses them (sd_card.v's
+// image_mounted index): 0 tape, 1 floppy A, 2 floppy B, 3 hard disk,
+// 4 ROM disk cartridge
 static const char *drivename(int drive) {
-  static const char *names[] = { "A", "B", "ACSI 0", "ACSI 1", "C" };
+  static const char *names[] = { "Tape", "A", "B", "HDD", "ROM" };
   return names[drive];  
 }
 

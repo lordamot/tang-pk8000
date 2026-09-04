@@ -1,0 +1,31 @@
+lets extend ./soft directory - add hdd image there (take the one from emu80, for example), add fdd disk with AY player - there should be one somewhere, also lets add .bas program (plain txt file in fact) with some sura graphic modes demo - and also add it as .cas file - so both under ./soft also
+
+oh and btw we need one more feature in osd - actually add option to run bas files - idea is to take plain text from sd - reset machine, and transfer it converted right into computer memory - so like as it was typed but not through keyboard so much faster
+
+****
+
+Done, all of it in simulation only, nothing on a board.
+
+soft/ now holds:
+- cf.img - Emu80's 2 MB CF image, moved from tang/rom/ (docs repointed). It carries STCPL.COM and DEMOAY.COM already.
+- ayplayer.fdd - DISK1 of the 2009 floppy set from your ~/Work/kay1024/sura collection (a P/M system disk) with STCPL.COM 1.2 from MrDemonid's GitHub and DEMOAY.COM from the CF added by the new tools/mkfdd.py, which writes the disks' CP/M file system (two system cylinders, a 128-entry directory, 2 KB blocks, 16-bit block numbers). No STC tunes: none were on the host or in the repository; the player is there, the music is not.
+- demo.bas and demo.cas - the screen modes: text 40, text 32, graphics twice. SCREEN 3 is border only on this machine and a syntax error in this BASIC; LINE ...,B and PAINT are syntax errors too.
+- hello.cas and a README.
+
+Seen in simulation: DISK1 boots P/M's file-manager shell; demoay typed at its prompt plays the AY card, 84381 I2S frames with sound; the demo runs its loop, 18 sampled frames.
+
+Run .bas, the OSD feature:
+- FPGA: sysctrl.v CMD 6 (an address, then bytes) and poke.v, a 16-deep queue that writes into the SDRAM in T-states the CPU leaves free. The CPU never waits. Bitstream rebuilt, 0 violations, Logic 30%.
+- Firmware: mnano/bas.c resets, waits 3 s for the prompt, tokenises the text with the ROM's own table (mnano/pk8000_tokens.h, generated from the ROM by tools/mkcas.py --header), sends each line to 4001h, the three pointers to F930h, then "run" through the keyboard path. A "Run .bas:" entry on the main form (drive 5, not a card slot). make bas-test proves the firmware tokeniser and mkcas produce the same bytes; make menu-test walks the new entry; the firmware builds and bin/bl616.bin is updated.
+- Testbench: +BAS=<file.tok> does what the firmware does; +TYPE_STR= types any text; +PPM_EVERY thins the frames.
+
+Facts measured from the ROM on the way, all in platform.md:
+- Numbers are not encoded in memory at all: digits stay as text. Only keywords and operators are tokens, letters outside strings go to capitals. So the tokeniser is small.
+- The program pointers are at F92Eh: TXTTAB, VARTAB, ARYTAB, STREND.
+- The / key unshifted is ? (BASIC's PRINT), Shift gives /.
+
+Defect 15, found by the demo: port 84h's graphics decode was inverted, so SCREEN 2 had shown "border only" since 0.1.0; the ROM writes 10h for SCREEN 2 and the old decode made that mode 3. Fixed from Emu80's setPortA. The text modes were never affected.
+
+Open: SCREEN 1 shows an 8-row green block at the right of the top rows that the demo did not draw; logged in progress.md, not looked into.
+
+Nothing committed. Shall I commit the whole tree now?

@@ -111,3 +111,47 @@ module pk8000_rom (
         if (reset)   dout <= 16'h0000;
         else if (ce) dout <= mem[ad];
 endmodule
+
+//------------------------------------------------------------------------
+// fdc_rom, hdd_rom - src/pk8000/fdc_rom.v, hdd_rom.v: the expansion
+// ROMs, 4096 and 4661 words, registered, from mif.py binhex.
+//------------------------------------------------------------------------
+module fdc_rom (
+    output reg [15:0] dout,
+    input             clk,
+    input             ce,
+    input             reset,
+    input      [11:0] ad
+);
+    parameter MEM_HEX = "build/mif/fdc_rom.hex";
+    reg [15:0] mem [0:4095];
+    integer i;
+    initial begin
+        for (i = 0; i < 4096; i = i + 1) mem[i] = 16'h0000;
+        $readmemh(MEM_HEX, mem);
+        dout = 16'h0000;
+    end
+    always @(posedge clk)
+        if (reset)   dout <= 16'h0000;
+        else if (ce) dout <= mem[ad];
+endmodule
+
+module hdd_rom (
+    output reg [15:0] dout,
+    input             clk,
+    input             ce,
+    input             reset,
+    input      [12:0] ad
+);
+    parameter MEM_HEX = "build/mif/hdd_rom.hex";
+    reg [15:0] mem [0:8191];
+    integer i;
+    initial begin
+        for (i = 0; i < 8192; i = i + 1) mem[i] = 16'h0000;
+        $readmemh(MEM_HEX, mem);
+        dout = 16'h0000;
+    end
+    always @(posedge clk)
+        if (reset)   dout <= 16'h0000;
+        else if (ce) dout <= mem[ad];
+endmodule

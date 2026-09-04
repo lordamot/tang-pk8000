@@ -41,12 +41,16 @@ the video in every T-state; the 16 KB BASIC 1.2 ROM in BSRAM; the two
 ВВ55s, the video registers, the colour RAM, the keyboard matrix and the
 joysticks in `ports.v`; the display rendered line by line into a
 buffer and read out as 768x576 at the machine's own 50.73 Hz over
-HDMI, with the beeper as the sound; the video controller's cost to the
-CPU paid as wait states from Emu80's measured tables.  No tape, no
-floppy yet.
+HDMI, with the beeper and the AY card as the sound; the video
+controller's cost to the CPU paid as wait states from Emu80's measured
+tables.  Around it the peripherals of 0.2.0: a `.cas` tape player, the
+НГМД (MiSTer's wd1793) with its ROM, the IDE/CF adapter with its ROM,
+the ROM disk cartridge in the SDRAM, the AY card - all of them fed from
+the SD card's image slots through `sd_arbiter.v`, and one of the three
+expansion-page devices at a time by the OSD's 'x'.
 
 ```
-Logic 17%   Register 10%   BSRAM 24%   PLL 2/2 (100%)  [4 Sep 2026 PnR, v0.1.0; clk30 makes 66.6 MHz, 0 violations]
+Logic 29%   Register 17%   BSRAM 25/46 (55%)   PLL 2/2 (100%)  [4 Sep 2026 PnR, v0.2.0; clk30 makes 62.8 MHz, 0 violations]
 ```
 
 Key documentation: `.claude/docs/platform.md` (the machine: memory
@@ -125,16 +129,20 @@ the Makefile, what lint and simulation do and do not cover, flashing),
   Count acks, not requests.
 - **The ROM scans the keyboard once a frame, in its interrupt, and
   debounces across scans.**  A key down for less than 19.7 ms is not
-  seen; keys typed faster come out in row order ("PRINT 1+1" as
-  "1+INPRT"); and at 30 and 60 ms holds the Shift state the ROM paired
-  with a digit still differed between runs.  The testbench's `+TYPE` is
-  therefore not yet evidence about the digit row's layout, only about
-  the path; a USB keyboard's human is slower than any of this.
+  seen.  With the matrix polarity right (above) the testbench's 60 ms
+  holds type cleanly: `+TYPE` gets "print 1+1" answered "2", and
+  `+TYPE_CLOAD` loads and runs a program off the tape.
 - **`hid.v`'s keyboard byte has a strobe now.**  UKNC Nano's took a
   change of the byte and lost the second of two equal events; here
   `ports.v` acts on `kbd_stb`.  The code is `row*8+col+1` with bit 7
   for release, 0 for no key - the firmware's `pk8000.h` and `ports.v`
-  agree and must keep agreeing.
+  agree and must keep agreeing.  **Bit 7 is the matrix level itself**
+  (pressed reads low): `ports.v` wrote its inverse for the whole of
+  0.1.0, so every key went down at its release and stayed down, the ROM
+  typed it once at that edge, and Shift was held for ever after its
+  first use.  "1+INPRT", the three differing typing runs, `cload"TEST`
+  coming out in capitals - all that one bit.  A typing test that gives
+  odd case or order is the matrix before it is the ROM.
 - **Port 88h's border colour, the text foreground and DSCR are read at
   every pixel; the bases and the bank at every tile fetch.**  That is
   Emu80's model and it makes mid-line register writes visible.  The
@@ -162,6 +170,58 @@ the Makefile, what lint and simulation do and do not cover, flashing),
 - **Flashing the FPGA is replug, flash, power-cycle - in that order**,
   and the BL616 must be in boot mode (hold BOOT, tap RESET, release
   BOOT).  `.claude/docs/build.md`; UKNC Nano learned both the hard way.
+- **Gowin's synthesis will not read a file that says `` `default_nettype
+  none``** - every port of it and of every file after it fails EX3094 -
+  and its place-and-route refuses an inferred dual-port RAM that reads
+  the old data on a write (PA2122, "WRITE_MODE0 = 2'b10").  Verilator
+  minds neither, so `make lint` clean is not `make bitstream` clean;
+  `wd1793.sv` lost the directive and its buffer became write-through
+  (Altera's same-port behaviour anyway).  An inferred RAM here is
+  read-only-or-write on a port, never both in one clock.
+- **The SD request must stay up until the card is busy on it.**  The
+  MCU polls `rstart`/`wstart` as levels and takes the direction from them
+  when it starts the transfer, milliseconds later; every client drops its
+  `rd` the clock after `ack`, and the first `sd_arbiter.v` followed the
+  client and dropped the request after one clock - the card model read
+  it as a write and every peripheral hung.  The arbiter latches the
+  direction and the sector at the grant; the model checks the request is
+  still up when it takes it and says so if not.
+- **The firmware mounts the images while it holds the machine in reset**
+  (`menu.c`: the files, then R=3, R=0), so a peripheral that keeps its
+  "image present" under the CPU reset loses the mount: the IDE BIOS sat
+  at "Reset..." waiting for a drive.  `mounted`/`image_size` bookkeeping
+  is never under `cpu_rst`; `top.v`'s `mounted[]`, `ide.v` and `tape.v`
+  keep it in a block of their own.
+- **This BASIC's tokens are not MSX's, and its numbers are not
+  encoded.**  PRINT is 95h (MSX: 91h), END is ECh, CLS is 80h; the
+  table is at 3170h in the ROM and `tools/mkcas.py` reads it from there
+  (`make tokens` writes `mnano/pk8000_tokens.h` for the firmware).  A
+  number stays as its digits - no 0Fh/1Ch/11h prefixes - so a line in
+  memory is the text with keywords and operators as bytes and the
+  letters in capitals, nothing more.  A program written with MSX
+  tokens loads and then fails with "? 13 Error in 10".  The loader
+  reads eight bytes past the program's final 00 00, so a `.cas` needs
+  a zero trailer longer than MSX's seven, or it is "Device I/O error"
+  with the program already in memory.  `make bas-test` keeps `bas.c`
+  and `mkcas.py` agreeing.
+- **A register decode is not verified until software has used it.**
+  Port 84h's mode bits were read from Emu80 into a table in
+  `platform.md` and decoded in `ports.v` with the graphics half
+  inverted; the ROM's prompt and P/M's shell use the two text modes
+  and never touched it, and SCREEN 2 was black until `soft/demo.bas`
+  ran.  The cheap instrument is `+BAS=` with a two-line program and
+  `+IOTRACE`: what the ROM writes to a port is the fact.
+- **The "Run .bas" path is a poke, not typing.**  `sysctrl.v` CMD 6 and
+  `poke.v` write bytes into the SDRAM in T-states the CPU leaves free;
+  `bas.c` resets, waits 3 s for the prompt, sends the lines to 4001h
+  and the three pointers to F930h, then types "run".  If BASIC is not
+  at its prompt when the bytes land (a program running, the machine
+  mid-boot), what happens is the ROM's business, not ours.
+- **The testbench's millisecond delays are `ms * 64'd1000000`**: a
+  32-bit product wraps past 4294 ms, and `+PPM_FROM=6300` wrote its
+  frames at 2.0 s.  And `$test$plusargs("TYPE")` matches `+TYPE_CLOAD`
+  and `+TYPE_MS=` too - a prefix, not a name - so the `+TYPE` block is
+  guarded.
 - **`prompts/` is a transcript, not context.**  Never read it at the
   start of a session; append every exchange as it finishes, in the form
   `.claude/rules/guideline.md` gives.

@@ -27,6 +27,8 @@ make bitstream   build the FPGA bitstream -> bin/tang.fs (about 30 s)
 make timing      the timing gate alone, on the last PnR report
 make fw          build the BL616 firmware -> build/fw/bl616.bin
 make menu-test   the OSD menu on the host: every form walked, screens as PNG
+make bas-test    the firmware's BASIC tokeniser on the host against tools/mkcas.py
+make tokens      regenerate mnano/pk8000_tokens.h from the ROM
 make rom         regenerate tang/src/pk8000/pk8000_rom.v from tang/rom/pk8000_v12.rom
 make waits       regenerate tang/src/pk8000/waits_rom.v from tools/waits_rom.py
 make mif         the ROM as $readmemh hex for the sim model (build/mif/)
@@ -89,6 +91,38 @@ frame.
 BASIC prompt is about two seconds of machine time in; `PPM_FROM=2350`
 with `+TYPE` (a line of BASIC typed through the keyboard path at 2.2 s)
 is what the screenshots in `progress.md` were made with.
+
+The peripherals are simulated against `sim/stubs/sd_card_sim.v`, which
+serves host files as the image slots - `+TAPE=`, `+FDDA=`, `+FDDB=`,
+`+HDD=`, `+ROMDISK=` - on `sd_card.v`'s core-side interface, with
+`+SDFAST` for a card that answers in microseconds and `+SDTRACE` for
+every sector.  `+EXP=<n>` is the OSD's expansion choice.  The three
+runs of 4 Sep 2026 that `progress.md` reports:
+
+```
+make frames RUN_MS=6400 PPM_FROM=8200 SIMARGS="+TAPE=soft/hello.cas +TYPE_CLOAD +SDFAST"
+make frames RUN_MS=4000 PPM_FROM=3700 SIMARGS="+EXP=2 +HDD=soft/cf.img +SDFAST"
+make frames RUN_MS=4000 PPM_FROM=3700 SIMARGS="+EXP=1 +FDDA=blank.fdd +SDFAST"
+make frames RUN_MS=8000 PPM_FROM=7900 SIMARGS="+EXP=1 +FDDA=soft/ayplayer.fdd +SDFAST +TYPE_STR=demoay +TYPE_MS=5500"
+python3 tools/mkcas.py --tok build/demo.tok soft/demo.bas
+make frames RUN_MS=14000 PPM_FROM=2400 PPM_EVERY=40 PPM_MAX=16 SIMARGS="+BAS=build/demo.tok"
+```
+
+`+TYPE_STR=` types any text at the prompt (`_` for a space; `+RAMDUMP`
+then shows what the ROM made of it), `+BAS=` puts a tokenised program
+into the RAM through the MCU's poke path and runs it, `+PPM_EVERY=`
+thins the frames so one run can sample a demo over time.
+
+(`blank.fdd` is 819200 zero bytes; the repository has no floppy image.
+The typing takes real time - 120 ms a key - so "run" lands about
+1.1 s after `RUN_MS` and the frame after that; `+RAMDUMP` writes the
+RAM to `sim/out/ram.hex`, word n = bytes 2n and 2n+1, the program at
+4001h.)
+On this host the simulation runs at about 15 ms of machine time a
+second, so those are four to nine minutes each, and they are
+independent: run them in parallel from separate directories that hold
+`build/`, `soft/` and `tang/` as symlinks and an empty `sim/out/`, since
+the testbench writes its frames to `sim/out/` relative to where it runs.
 
 ## The MCU half
 

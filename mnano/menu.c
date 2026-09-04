@@ -8,6 +8,7 @@
 #include <ff.h>
 
 #include "sdc.h"
+#include "bas.h"
 #include "menu.h"
 #include "sysctrl.h"
 
@@ -77,9 +78,10 @@ menu_variable_t variables_agat9[] = {
 // ------------------------------------------------------------------
 // ---------------------  PK8000 menu ----------------------------
 // ------------------------------------------------------------------
-// The main form is the reset, one "Hardware" form for the switches, an
-// "About" text and "Save settings".  Every switch is a letter sysctrl.v
-// decodes.
+// The main form is the four image slots, the reset, one "Hardware" form
+// for the ROM disk slot and the switches, an "About" text and "Save
+// settings".  Every switch is a letter sysctrl.v decodes; the image
+// slots are sd_card.v's (sdc.c drivename()).
 //
 // A form's title is "name,parent|entry": the parent form and the entry
 // in it to return to.  The entry number is only a fallback -
@@ -93,18 +95,32 @@ menu_variable_t variables_agat9[] = {
 static const char main_form_pk8000[] =
   "PK8000 Nano,;"                       // main form has no parent
   // --------
+  "F,Tape:,0|cas;"                      // slot 0: the tape recorder
+  "F,Floppy A:,1|fdd;"                  // slot 1: floppy A
+  "F,Floppy B:,2|fdd;"                  // slot 2: floppy B
+  "F,Hard disk:,3|img+hdd;"             // slot 3: the IDE hard disk
+  "F,Run .bas:,5|bas;"                  // not a slot: the text is tokenised and put into RAM (bas.c)
   "B,Reset,R;"                          // system reset
   "S,Hardware,1;"                       // Hardware submenu is form 1
   "T,About,;"                           // the about_pk8000 text
   "B,Save settings,S;";
 
+// 12 entries: the form scrolls (menu_entry_go keeps four rows in view)
 static const char hardware_form_pk8000[] =
-  "Hardware,0|2;"                       // return to the main form
+  "Hardware,0|7;"                       // return to the main form, entry 7
   // --------
+  "L,Expansion:,None|Floppy|IDE|ROM disk,x;"  // what sits in expansion slot 1
+  "F,ROM disk:,4|bin+rom;"              // slot 4: the ROM disk cartridge
+  "L,Tape:,Stop|Play,T;"                // the tape recorder's motor
+  "B,Rewind tape,e;"                    // a pulse: rewind to the start
+  "L,AY card:,Off|On,y;"                // the AY-3-8910 sound card
   "L,Volume:,Mute|33%|66%|100%,A;"
   "L,Beeper:,Mute|On,b;"
   "L,CPU waits:,Off|On,w;"              // the wait states the video adds to the CPU
-  "L,Joysticks:,Normal|Swapped,j;";     // swap the two joystick ports
+  "L,Joysticks:,Normal|Swapped,j;"      // swap the two joystick ports
+  "L,Floppy A prot.:,Off|On,p;"         // write protection
+  "L,Floppy B prot.:,Off|On,q;"
+  "L,HDD prot.:,Off|On,K;";
 
 static const char *forms_pk8000[] = {
   main_form_pk8000,
@@ -121,15 +137,23 @@ static const char *about_pk8000[] = {
   "Built on Alexey Gurov's UKNC Nano and on MiSTeryNano (Till Harbaum)",
   "The КР580ВМ80А core is vm80a by 1801BM1 (Vslav), CC-BY 3.0",
   "Hardware knowledge from Emu80 (Viktor Pykhonin) and MAME",
+  "WD1793 core by MikeJ and Sorgelig (MiSTer), CC-BY vm80a, Emu80/MAME for the hardware",
   NULL
 };
 
 // variable ids must match the ones in the menu string, and sysctrl.v's
+// (buttons - 'R', 'e', 'S' - are not variables)
 menu_variable_t variables_pk8000[] = {
   { 'A', { 1 }},    // Volume 33%
   { 'b', { 1 }},    // Beeper on
   { 'w', { 1 }},    // CPU waits on
   { 'j', { 0 }},    // Joysticks normal
+  { 'x', { 0 }},    // Expansion slot 1 empty
+  { 'T', { 1 }},    // Tape plays
+  { 'y', { 1 }},    // AY sound card on
+  { 'p', { 0 }},    // Floppy A writable
+  { 'q', { 0 }},    // Floppy B writable
+  { 'K', { 0 }},    // Hard disk writable
   { '\0',{ 0 }}
 };
 // ------------------------------------------------------------------
@@ -709,11 +733,11 @@ menu_t *menu_init(u8g2_t *u8g2)
     }
     }
   
-  // try to mount (default) images
+  // try to mount (default) images (not the .bas drive: that one runs)
   for(int drive=0;drive<MAX_DRIVES;drive++) {
     char *name = sdc_get_image_name(drive);
     
-    if(name) {
+    if(name && drive != BAS_DRIVE) {
       // create a local copy as sdc_image_open frees its own copy
       char local_name[strlen(name)+1];
       strcpy(local_name, name);
@@ -1253,6 +1277,15 @@ static void menu_fileselector(menu_t *menu, int event) {
 	    }
 	  }
 	}
+      } else if(drive == BAS_DRIVE) {
+	// PK8000: a .bas file is not mounted, it is loaded into the machine
+	char path[strlen(sdc_get_cwd(drive)) + strlen(entry->name) + 2];
+	strcpy(path, sdc_get_cwd(drive));
+	strcat(path, "/");
+	strcat(path, entry->name);
+	menu_goto_form(menu, parent, fsel_entry);
+	osd_enable(menu->osd, OSD_INVISIBLE);
+	bas_run(menu->osd->spi, path);
       } else {
 	// request insertion of this image
 	sdc_image_open(drive, entry->name);
@@ -1391,6 +1424,13 @@ static void menu_select(menu_t *menu) {
       sys_set_val(menu->osd->spi, 'Z', 1);
       sys_set_val(menu->osd->spi, 'Z', 0);
       osd_enable(menu->osd, OSD_INVISIBLE);  // hide OSD
+    }
+
+    // any other button is a pulse to the core (PK8000: 'e' rewinds the
+    // tape); the OSD stays open
+    if(id != 'S' && id != 'R' && id != 'B' && id != 'Z') {
+      sys_set_val(menu->osd->spi, id, 1);
+      sys_set_val(menu->osd->spi, id, 0);
     }
   } break;
 	

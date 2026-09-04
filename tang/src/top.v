@@ -21,6 +21,16 @@
 //   ports.v    the two ВВ55s, the video registers, keyboard, joysticks
 //   video.v    the display: the machine's raster into a line buffer,
 //              read out twice per line as 768x576 at 50.73 Hz
+//   tape.v     a cassette player for .cas files (SD slot 0)
+//   fdc.v      the НГМД: a ВГ93 (wd1793.sv) with its ROM, .fdd images
+//              in slots 1 and 2 - expansion page 1 when the OSD says so
+//   ide.v      the IDE/CF adapter (a ВВ55 at 50h-53h) with its ROM, an
+//              .img in slot 3 - expansion page 1 when the OSD says so
+//   romdisk.v  the ROM disk cartridge, loaded into the SDRAM from slot 4
+//              - expansion page 1 when the OSD says so
+//   ay.v       the AY card at 14h/15h (ym2149.sv)
+//   sd_arbiter.v  one owner at a time on sd_card.v's sector interface
+//   poke.v     the MCU's bytes into the RAM (a BASIC program from a file)
 // and around it MiSTeryNano's MCU link (src/mister/), UKNC Nano's HDMI
 // encoder with audio (src/hdmi/) and an I2S output (i2s_tx.v).
 //========================================================================
@@ -112,6 +122,10 @@ wire [1:0] system_volume;
 wire       system_beeper;
 wire       system_waits;
 wire       system_joyswap;
+wire [1:0] system_exp;         // 0 none, 1 floppy, 2 IDE, 3 ROM disk
+wire       system_tape, system_rewind, system_ay, system_hdd_wprot;
+wire [1:0] system_fdd_wprot;
+wire       rd_loading;         // the ROM disk is being copied in: hold the CPU
 
 //------------------------------------------------------------------------
 // The machine's raster and the T-state phase, one counter pair.  The
@@ -141,7 +155,7 @@ end
 // vm80a takes its reset through two phase-registered stages; hold it
 // well past that: 16 T-states after the request goes away.
 reg  [7:0] cpu_rst_cnt = 8'hFF;
-wire       cpu_rst_req = mist_rst | system_reset[0] | ~init;
+wire       cpu_rst_req = mist_rst | system_reset[0] | ~init | rd_loading;
 always @(posedge clk) begin
     if (cpu_rst_req) cpu_rst_cnt <= 8'd192;
     else if (cpu_rst_cnt != 8'd0 && tphase == 4'd11) cpu_rst_cnt <= cpu_rst_cnt - 8'd1;
@@ -175,19 +189,43 @@ endfunction
 wire [1:0] page_now = page_of(bank_reg, cpu_a_now);   // at the strobe
 wire       rom_now  = (page_now != 2'd3);
 
+// Expansion page 1 (the OSD's 'x'): the floppy controller's ROM and
+// registers, the IDE adapter's ROM, or the ROM disk in the SDRAM.  A
+// quarter's offset is the low 14 bits of the address.
+wire        exp_fdc = (system_exp == 2'd1);
+wire        exp_ide = (system_exp == 2'd2);
+wire        exp_rom = (system_exp == 2'd3);
+wire [13:0] off_now = cpu_a_now[13:0];
+wire        p1_rd   = mem_rd && (page_now == 2'd1);
+wire        p1_wr   = mem_wr && (page_of(bank_reg, cpu_adr) == 2'd1);
+
 // what the read in flight will answer with
-reg  [1:0] rd_src = 2'd0;    // 0 nothing (0FFh), 1 RAM, 2 ROM, 3 I/O
+localparam [2:0] SRC_NONE = 3'd0, SRC_RAM = 3'd1, SRC_ROM = 3'd2, SRC_IO = 3'd3,
+                 SRC_FDC = 3'd4, SRC_HDD = 3'd5, SRC_AY = 3'd6, SRC_IDE = 3'd7;
+reg  [2:0] rd_src = SRC_NONE;
+wire       ay_hit, ide_hit;
 always @(posedge clk) begin
-    if (mem_rd) rd_src <= (page_now == 2'd3) ? 2'd1 : (page_now == 2'd0) ? 2'd2 : 2'd0;
-    if (io_rd)  rd_src <= 2'd3;
+    if (mem_rd) case (page_now)
+        2'd3: rd_src <= SRC_RAM;
+        2'd0: rd_src <= SRC_ROM;
+        2'd1: rd_src <= exp_fdc ? SRC_FDC : (exp_ide && off_now < 14'h3000) ? SRC_HDD :
+                        exp_rom ? SRC_RAM : SRC_NONE;
+        default: rd_src <= SRC_NONE;
+    endcase
+    if (io_rd) rd_src <= ay_hit ? SRC_AY : ide_hit ? SRC_IDE : SRC_IO;
 end
 
-wire [7:0]  ram_rdata, io_rdata;
-wire [15:0] rom_word;
+wire [7:0]  ram_rdata, io_rdata, fdc_rdata, ay_rdata, ide_rdata;
+wire [15:0] rom_word, hdd_word;
 wire [7:0]  rom_rdata = cpu_adr[0] ? rom_word[15:8] : rom_word[7:0];
-wire [7:0]  cpu_din   = (rd_src == 2'd1) ? ram_rdata :
-                        (rd_src == 2'd2) ? rom_rdata :
-                        (rd_src == 2'd3) ? io_rdata  : 8'hFF;
+wire [7:0]  hdd_rdata = cpu_adr[0] ? hdd_word[15:8] : hdd_word[7:0];
+wire [7:0]  cpu_din   = (rd_src == SRC_RAM) ? ram_rdata :
+                        (rd_src == SRC_ROM) ? rom_rdata :
+                        (rd_src == SRC_IO)  ? io_rdata  :
+                        (rd_src == SRC_FDC) ? fdc_rdata :
+                        (rd_src == SRC_HDD) ? hdd_rdata :
+                        (rd_src == SRC_AY)  ? ay_rdata  :
+                        (rd_src == SRC_IDE) ? ide_rdata : 8'hFF;
 
 wire stall_wide, border_wide, frame_irq;
 
@@ -239,6 +277,15 @@ pk8000_rom rom (
     .ad   (cpu_adr[13:1])
 );
 
+// the IDE adapter's ROM (9322 bytes in five pROMs), page 1 with 'x' = 2
+hdd_rom hddrom (
+    .dout (hdd_word     ),
+    .clk  (clk          ),
+    .ce   (1'b1         ),
+    .reset(1'b0         ),
+    .ad   (cpu_adr[13:1])
+);
+
 //------------------------------------------------------------------------
 // Memory
 //------------------------------------------------------------------------
@@ -246,8 +293,43 @@ wire        vid_req, vid_ack;
 wire [15:0] vid_adr;
 wire [7:0]  vid_rdata;
 
-wire        ram_req = (mem_rd && page_now == 2'd3) || mem_wr;
-wire [15:0] ram_adr = mem_wr ? cpu_adr : cpu_a_now;
+// The SDRAM's CPU port: the machine's RAM reads and writes, a read of
+// the ROM disk (page 1 with 'x' = 3, at the address romdisk.v gives),
+// and the ROM disk loader's writes while the CPU is held.
+wire        ld_req;
+wire [21:0] ld_adr, rd_adr_rom;
+wire [7:0]  ld_data;
+// and the MCU's bytes (poke.v), in T-states the CPU leaves free
+wire        poke_req;
+wire [15:0] poke_a;
+wire [7:0]  poke_d;
+wire        ram_req = rd_loading ? ld_req :
+                      ((mem_rd && (page_now == 2'd3 || (page_now == 2'd1 && exp_rom))) || mem_wr || poke_req);
+wire        ram_we  = rd_loading ? 1'b1 : (mem_wr | poke_req);
+wire [21:0] ram_adr = rd_loading ? ld_adr :
+                      poke_req ? {6'd0, poke_a} :
+                      mem_wr ? {6'd0, cpu_adr} :
+                      (page_now == 2'd1) ? rd_adr_rom : {6'd0, cpu_a_now};
+wire [7:0]  ram_wdata = rd_loading ? ld_data : poke_req ? poke_d : cpu_d_now;
+
+wire        poke_stb;
+wire [15:0] poke_adr;
+wire [7:0]  poke_data;
+
+poke pk (
+    .clk      (clk       ),
+    .reset    (mist_rst  ),
+    .stb      (poke_stb  ),
+    .adr      (poke_adr  ),
+    .data     (poke_data ),
+    .tphase   (tphase    ),
+    .cpu_busy (mem_rd | mem_wr),
+    .hold     (rd_loading),
+    .req      (poke_req  ),
+    .req_adr  (poke_a    ),
+    .req_data (poke_d    ),
+    .pending  (          )
+);
 
 sdram mem (
     .clk       (clk        ),
@@ -255,12 +337,12 @@ sdram mem (
     .init      (init       ),
     .tphase    (tphase     ),
     .cpu_req   (ram_req    ),
-    .cpu_we    (mem_wr     ),
+    .cpu_we    (ram_we     ),
     .cpu_adr   (ram_adr    ),
-    .cpu_wdata (cpu_d_now  ),
+    .cpu_wdata (ram_wdata  ),
     .cpu_rdata (ram_rdata  ),
     .vid_req   (vid_req    ),
-    .vid_adr   (vid_adr    ),
+    .vid_adr   ({6'd0, vid_adr}),
     .vid_rdata (vid_rdata  ),
     .vid_ack   (vid_ack    ),
     .SDRAM_A   (O_sdram_addr     ),
@@ -286,6 +368,7 @@ wire [4:0]  col_adr;
 wire [7:0]  col_wdata, col_rdata;
 wire [7:0]  kbd_byte, joystick0, joystick1;
 wire        kbd_stb;
+wire        tape_bit;
 
 // io_rd comes at the strobe's clock with the address still on the
 // core's bus; io_wr comes later, with the cycle's latched address and
@@ -305,7 +388,7 @@ ports io (
     .joy0          (joystick0 ),
     .joy1          (joystick1 ),
     .joy_swap      (system_joyswap),
-    .tape_in       (1'b0      ),
+    .tape_in       (tape_bit  ),
     .bank_reg      (bank_reg  ),
     .vmode         (vmode     ),
     .vbank         (vbank     ),
@@ -418,7 +501,16 @@ sysctrl sctl1 (
     .system_volume (system_volume ),
     .system_beeper (system_beeper ),
     .system_waits  (system_waits  ),
-    .system_joyswap(system_joyswap)
+    .system_joyswap(system_joyswap),
+    .system_exp    (system_exp    ),
+    .system_tape   (system_tape   ),
+    .system_rewind (system_rewind ),
+    .system_ay     (system_ay     ),
+    .system_fdd_wprot(system_fdd_wprot),
+    .system_hdd_wprot(system_hdd_wprot),
+    .poke_stb      (poke_stb      ),
+    .poke_adr      (poke_adr      ),
+    .poke_data     (poke_data     )
 );
 
 hid hd1 (
@@ -441,11 +533,17 @@ hid hd1 (
     .mouse_rep_dy  (              )
 );
 
-// The SD card is the MCU's: its FatFs reads the card through this
-// module, and the settings file with it.  The machine has no disk yet,
-// so nothing here asks for a sector.
+// The SD card is the MCU's - its FatFs reads the card through this
+// module, and the settings file with it - and the machine's: the five
+// image slots go to the peripherals below through the arbiter, one
+// transfer at a time.
 wire [31:0] sd_img_size;
 wire [ 4:0] sd_img_mounted;
+wire [ 4:0] sd_rstart, sd_wstart;
+wire [31:0] sd_rsector;
+wire [ 7:0] sd_inbyte, sd_outbyte;
+wire        sd_rbusy, sd_rdone, sd_outen;
+wire [ 8:0] sd_outaddr;
 
 sd_card #(
     .CLK_DIV(3'd1)
@@ -463,15 +561,201 @@ sd_card #(
     .image_mounted(sd_img_mounted),
     .irq          (sdc_int       ),
     .iack         (int_ack[3]    ),
-    .rstart       (5'd0          ),
-    .wstart       (5'd0          ),
-    .rsector      (32'd0         ),
-    .rbusy        (              ),
-    .rdone        (              ),
-    .inbyte       (8'd0          ),
-    .outen        (              ),
-    .outaddr      (              ),
-    .outbyte      (              )
+    .rstart       (sd_rstart     ),
+    .wstart       (sd_wstart     ),
+    .rsector      (sd_rsector    ),
+    .rbusy        (sd_rbusy      ),
+    .rdone        (sd_rdone      ),
+    .inbyte       (sd_inbyte     ),
+    .outen        (sd_outen      ),
+    .outaddr      (sd_outaddr    ),
+    .outbyte      (sd_outbyte    )
+);
+
+// which slots hold an image, for the peripherals' "ready"
+reg [4:0] mounted = 5'd0;
+integer   mi;
+always @(posedge clk)
+    for (mi = 0; mi < 5; mi = mi + 1)
+        if (sd_img_mounted[mi]) mounted[mi] <= |sd_img_size;
+
+// the arbiter's five clients
+wire [4:0]   c_rd, c_wr, c_ack, c_done, c_outen;
+wire [159:0] c_sector;
+wire [39:0]  c_inbyte;
+
+sd_arbiter sdarb (
+    .clk     (clk       ),
+    .reset   (mist_rst  ),
+    .c_rd    (c_rd      ),
+    .c_wr    (c_wr      ),
+    .c_sector(c_sector  ),
+    .c_inbyte(c_inbyte  ),
+    .c_ack   (c_ack     ),
+    .c_done  (c_done    ),
+    .c_outen (c_outen   ),
+    .rstart  (sd_rstart ),
+    .wstart  (sd_wstart ),
+    .rsector (sd_rsector),
+    .inbyte  (sd_inbyte ),
+    .rbusy   (sd_rbusy  ),
+    .rdone   (sd_rdone  ),
+    .outen   (sd_outen  )
+);
+
+// slot 0: the tape
+wire        tape_rd, tape_running;
+wire [31:0] tape_sector;
+assign c_rd[0] = tape_rd;
+assign c_wr[0] = 1'b0;
+assign c_sector[31:0] = tape_sector;
+assign c_inbyte[7:0]  = 8'h00;
+
+tape tp (
+    .clk         (clk           ),
+    .reset       (mist_rst      ),
+    .mounted     (sd_img_mounted[0]),
+    .image_size  (sd_img_size   ),
+    .play        (system_tape   ),
+    .rewind      (system_rewind ),
+    .motor       (tape_motor    ),
+    .short_header(1'b0          ),
+    .sd_rd       (tape_rd       ),
+    .sd_sector   (tape_sector   ),
+    .sd_ack      (c_ack[0]      ),
+    .sd_done     (c_done[0]     ),
+    .outen       (c_outen[0]    ),
+    .outaddr     (sd_outaddr    ),
+    .outbyte     (sd_outbyte    ),
+    .tape_bit    (tape_bit      ),
+    .running     (tape_running  ),
+    .position    (              )
+);
+
+// slots 1 and 2: the floppies, one controller, the drive bit picks the slot
+wire        fdc_drive, fdc_rd, fdc_wr, fdc_busy;
+wire [31:0] fdc_sector;
+wire [7:0]  fdc_inbyte;
+assign c_rd[1] = fdc_rd && !fdc_drive;
+assign c_rd[2] = fdc_rd &&  fdc_drive;
+assign c_wr[1] = fdc_wr && !fdc_drive;
+assign c_wr[2] = fdc_wr &&  fdc_drive;
+assign c_sector[63:32]  = fdc_sector;
+assign c_sector[95:64]  = fdc_sector;
+assign c_inbyte[15:8]   = fdc_inbyte;
+assign c_inbyte[23:16]  = fdc_inbyte;
+wire        fdc_ack   = fdc_drive ? c_ack[2]   : c_ack[1];
+wire        fdc_done  = fdc_drive ? c_done[2]  : c_done[1];
+wire        fdc_outen = fdc_drive ? c_outen[2] : c_outen[1];
+
+fdc fd (
+    .clk       (clk         ),
+    .reset     (cpu_rst     ),
+    .ce        (tphase == 4'd0),
+    .en        (exp_fdc     ),
+    .rd_stb    (p1_rd       ),
+    .wr_stb    (p1_wr       ),
+    .off       (p1_wr ? cpu_adr[13:0] : off_now),
+    .wdata     (cpu_d_now   ),
+    .rdata     (fdc_rdata   ),
+    .mounted   (sd_img_mounted[2:1]),
+    .image_size(sd_img_size ),
+    .present   (mounted[2:1]),
+    .wprot     (system_fdd_wprot),
+    .drive     (fdc_drive   ),
+    .sd_rd     (fdc_rd      ),
+    .sd_wr     (fdc_wr      ),
+    .sd_sector (fdc_sector  ),
+    .sd_ack    (fdc_ack     ),
+    .sd_done   (fdc_done    ),
+    .outen     (fdc_outen   ),
+    .outaddr   (sd_outaddr  ),
+    .outbyte   (sd_outbyte  ),
+    .inbyte    (fdc_inbyte  ),
+    .busy      (fdc_busy    )
+);
+
+// slot 3: the hard disk behind the IDE adapter
+wire        ide_rd, ide_wr;
+wire [31:0] ide_sector;
+wire [7:0]  ide_inbyte;
+assign c_rd[3] = ide_rd;
+assign c_wr[3] = ide_wr;
+assign c_sector[127:96] = ide_sector;
+assign c_inbyte[31:24]  = ide_inbyte;
+
+ide hd (
+    .clk       (clk         ),
+    .reset     (cpu_rst     ),
+    .en        (exp_ide     ),
+    .adr       (io_adr      ),
+    .io_rd     (io_rd       ),
+    .io_wr     (io_wr       ),
+    .wdata     (cpu_d_now   ),
+    .rdata     (ide_rdata   ),
+    .hit       (ide_hit     ),
+    .mounted   (sd_img_mounted[3]),
+    .image_size(sd_img_size ),
+    .wprot     (system_hdd_wprot),
+    .sd_rd     (ide_rd      ),
+    .sd_wr     (ide_wr      ),
+    .sd_sector (ide_sector  ),
+    .sd_ack    (c_ack[3]    ),
+    .sd_done   (c_done[3]   ),
+    .outen     (c_outen[3]  ),
+    .outaddr   (sd_outaddr  ),
+    .outbyte   (sd_outbyte  ),
+    .inbyte    (ide_inbyte  )
+);
+
+// slot 4: the ROM disk cartridge, copied into the SDRAM at mount
+wire        rdk_rd;
+wire [31:0] rdk_sector;
+assign c_rd[4] = rdk_rd;
+assign c_wr[4] = 1'b0;
+assign c_sector[159:128] = rdk_sector;
+assign c_inbyte[39:32]   = 8'h00;
+wire        p77_wr = io_wr && (cpu_adr[7:0] == 8'h77);
+
+romdisk rdk (
+    .clk       (clk         ),
+    .reset     (mist_rst    ),
+    .tphase    (tphase      ),
+    .mounted   (sd_img_mounted[4]),
+    .image_size(sd_img_size ),
+    .sd_rd     (rdk_rd      ),
+    .sd_sector (rdk_sector  ),
+    .sd_ack    (c_ack[4]    ),
+    .sd_done   (c_done[4]   ),
+    .outen     (c_outen[4]  ),
+    .outaddr   (sd_outaddr  ),
+    .outbyte   (sd_outbyte  ),
+    .loading   (rd_loading  ),
+    .ld_req    (ld_req      ),
+    .ld_adr    (ld_adr      ),
+    .ld_data   (ld_data     ),
+    .p77_wr    (p77_wr      ),
+    .wdata     (cpu_d_now   ),
+    .q         (cpu_a_now[15:14]),
+    .off       (off_now     ),
+    .rd_adr    (rd_adr_rom  ),
+    .present   (            )
+);
+
+// the AY card at 14h/15h
+wire [9:0] ay_sample;
+
+ay snd (
+    .clk   (clk       ),
+    .reset (cpu_rst   ),
+    .en    (system_ay ),
+    .adr   (io_adr    ),
+    .io_rd (io_rd     ),
+    .io_wr (io_wr     ),
+    .wdata (cpu_d_now ),
+    .rdata (ay_rdata  ),
+    .hit   (ay_hit    ),
+    .sample(ay_sample )
 );
 
 //------------------------------------------------------------------------
@@ -545,11 +829,12 @@ hdmi_serdes hdmi_ser (
 //------------------------------------------------------------------------
 // Sound.  The ПК8000 has a one-bit beeper on port 82h bit 7 and the
 // tape output on bit 6; both go into one unipolar sum - the beeper at
-// a quarter of full scale, the tape output at a sixteenth - and the
-// OSD's volume divides it down.  Unipolar on purpose: UKNC Nano's
+// a quarter of full scale, the tape output at a sixteenth, the AY card's
+// three channels at up to 12240 - and the OSD's volume divides it down.  Unipolar on purpose: UKNC Nano's
 // notes on hdmi_tx.v say why a DC blocker is not here yet.
 //------------------------------------------------------------------------
-wire [15:0] mix = {2'd0, beeper & system_beeper, 13'd0} + {4'd0, tape_out, 11'd0};
+wire [15:0] mix = {2'd0, beeper & system_beeper, 13'd0} + {4'd0, tape_out, 11'd0}
+                + {2'd0, ay_sample, 4'd0};           // the AY's three channels, 0..12240
 
 reg [15:0] volume = 16'd0;
 always @(posedge clk)
@@ -578,8 +863,8 @@ i2s_tx i2s (
 //------------------------------------------------------------------------
 assign leds[0] = ~por_done;
 assign leds[1] = ~beeper;
-assign leds[2] = ~int_ff;
-assign leds[3] = ~cpu_inte;
+assign leds[2] = ~tape_running;
+assign leds[3] = ~(fdc_busy | sd_rbusy);
 assign leds[4] = ~cpu_rst;
 assign leds[5] = ~init;
 

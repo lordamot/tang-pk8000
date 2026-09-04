@@ -78,7 +78,7 @@ board answers an I/O address; the community's AY card sits at 14h/15h
 | 81h | r | ВВ55 #1 B: the keyboard's eight data lines for the selected row, a pressed key low |
 | 82h | w (r) | ВВ55 #1 C: [3:0] keyboard row select (0..9; 10..15 read 0FFh), [4] tape motor, [6] tape output, [7] the beeper |
 | 83h | w | ВВ55 #1 control: bit 7 set = mode word (ports cleared), clear = bit set/reset on port C ({bit 3:1, value 0}) |
-| 84h | w (r) | ВВ55 #2 A: [4] graphics, [5] 40 columns, [7:6] the screen's quarter.  Mode = {bit 4, ~bit 5}: 00 text 40, 01 text 32, 10 graphics, 11 border only |
+| 84h | w (r) | ВВ55 #2 A: [4] graphics, [5] with [4] clear: 40 columns; with [4] set: blank, [7:6] the screen's quarter.  Mode (Emu80's setPortA): 20h text 40, 00h text 32, 10h graphics, 30h border only - the ROM's SCREEN 0, 1, 2 write 20h, 00h, 10h |
 | 85h | w (r) | ВВ55 #2 B: printer data |
 | 86h | w / r | ВВ55 #2 C: [4] display enable (DSCR; 0 = "blanking"), [7] printer strobe.  A read answers 0FBh - printer not busy - as Emu80 answers it |
 | 87h | w | ВВ55 #2 control, as 83h |
@@ -192,12 +192,15 @@ and sends a press as the code and a release as the code with bit 7 set
 row are two low bits, as on the machine.  The machine's own keycaps
 carry Cyrillic on the letter keys and symbols on the digit row that
 the ROM decides by АЛФ and Shift; the translation is by key position,
-not by character.  As the ROM has it (seen in simulation): unshifted
-letters are lower case, and Shift changes the function-key bar's
-labels as on an MSX.  What the digit row types with and without Shift
-is not settled - the three typing runs of 4 Sep 2026 disagreed
-(`progress.md`); Emu80's "smart" layout inverts Shift for digits,
-which suggests symbols unshifted.
+not by character.  As the ROM has it (seen in simulation, with the
+matrix polarity right - `progress.md`'s defect 13): unshifted letters
+are lower case and Shift gives capitals; the digit row is the other way
+round from a PC, the digit under Shift and the symbol without - Shift+1
+is `1`, Shift+2 is `2`, the 2 key alone is `"`, Shift+; is `+`, the /
+key alone is `?` (BASIC's PRINT) and Shift+/ is `/`; and
+Shift changes the function-key bar's labels as on an MSX.  That is why
+Emu80's "smart" layout inverts Shift for the digits, and why the
+firmware should (`progress.md`, what is not built).
 
 ## Joysticks
 
@@ -211,28 +214,101 @@ the two ports.
 
 Output on port 82h bit 6, the motor relay on bit 4, input on port 8Dh
 bit 7.  MSX format at 1200 baud: a 1 is two cycles of 2400 Hz, a 0 one
-of 1200 Hz, a byte is a start bit, eight data bits LSB first, two
-stop bits, and a file begins with a run of 1s (the "header") and the
-eight bytes 1F A6 DE BA CC 13 7D 74 ... - Emu80's `MsxTapeHooks` and
-`.cas` files are the reference.  Nothing here drives it yet; the tape
-input reads 0 and the output goes into the sound mix at a low level.
-A tape player reading `.cas` from the SD card is the next thing worth
-building - it is how a Сура without a drive gets its software.
+of 1200 Hz, a byte is a start bit, eight data bits LSB first, two stop
+bits, and a file begins with a header tone (4000 bit-times of 1s) and
+then its bytes - in a `.cas` file the tone is the eight bytes 1F A6 DE
+BA CC 13 7D 74 at an 8-aligned position (fMSX's format; MAME's
+`fmsx_cas.cpp` is the waveform reference, Emu80's `MsxTapeHooks` the
+byte-level one).  `tape.v` plays a `.cas` from SD slot 0 into the tape
+input while the OSD says Play, the motor bit is on and the file is not
+at its end; Rewind puts it back.  A tokenised program (`CLOAD`) on tape
+is ten D3h bytes, a six-character name, a second header, then the
+program as it sits at 4001h with absolute line links - `tools/mkcas.py`
+writes one, with the ROM's own tokens: the reserved-word table at
+3170h of `pk8000_v12.rom` (each word's last letter with bit 7 set) is
+not MSX-BASIC's - CLS is 80h, FOR 81h ... PRINT 95h ... END ECh, LET
+EEh, COLOR F0h, 115 words, the operators among them (A4h + A5h - A6h *
+A7h / ACh = D1h &H) - and `mkcas.py` reads it from the ROM rather than
+carry a copy.  Numbers are not encoded at all: `a=5:b=300:c=70000:
+d=1.5:e=&h1f:pset(10,20),15:goto 10` typed at the keyboard and dumped
+from RAM (`+TYPE_STR= +RAMDUMP`) is the digits as text, so a line in
+memory is exactly the text with the keywords and operators replaced by
+their bytes and the letters outside strings in capitals.  The program
+starts at 4001h (TXTTAB, kept at F92Eh), each line {link, number, text,
+0}, a 00 00 link at the end, and VARTAB, ARYTAB, STREND at F930h,
+F932h, F934h point after it.  This ROM's `CLOAD` wants its string: `cload"NAME` (the
+quote is the 2 key unshifted) loads the file of that name and skips the
+others ("Skip :TEST"), a bare `cload` or `CLOAD` is "? 2 Error"
+(measured in simulation, 4 Sep 2026; the Shift+F2 key macro, which the
+function-key bar shows as `cload"`, typed nothing the ROM took).  The
+loader reads eight bytes on past the program's final 00 00: a `.cas`
+that ends with the program, or with MSX's seven zero bytes, is "Device
+I/O error" with the program already in memory (the ROM gives up about
+17 ms after the last edge), so `mkcas.py` writes sixteen zeros.  Recording (CSAVE) is not implemented: the output bit goes
+into the sound mix only.
 
 ## Sound
 
 One bit, port 82h bit 7, into a piezo (HA1 on the CPU board).  The
 design mixes it at a quarter of full scale with the tape output at a
-sixteenth and sends the sum to I2S and to HDMI.
+sixteenth and the AY card's three channels, and sends the sum to I2S
+and to HDMI.
 
-## Floppy and the rest (not built)
+## The AY card
 
-The Сура НГМД: a КР1818ВГ93 (WD1793) in expansion page 1 with an 8 KB
-ROM (`tang/rom/pk8000_fdc.rom`) at 0000h-1FFFh and registers at
-3FF7h-3FFFh - 3FF7h the drive/side/reset control (bit 7 reset, bit 6
-drive, bit 4 side), 3FF8h-3FFBh the ВГ93, 3FFCh-3FFFh a status byte
-selected by {DRQ, IRQ}.  `.fdd` images are 80 tracks x 2 sides x 5
-sectors x 1024 bytes.  Emu80's `pk8000_fdc.conf` is the map.  The IDE
-adapter is a ВВ55 at 50h-53h with `pk8000_hdd.rom` (9322 bytes) in
-expansion page 1.  The ROM disk cartridge selects a 16 KB page by port
-77h.  The AY card: register at 14h, data at 15h, 1.75 MHz.
+Mick's sound card (2008): an AY-3-8910 at the Вектор-06Ц's ports,
+because MSX's A0h-A2h are under the colour RAM - 15h selects a register,
+14h reads or writes it (Emu80's `Psg3910`: address bit 0 set = the
+register number).  1.75 MHz.  `ay.v` with UKNC Nano's `ym2149.sv`; the
+OSD's "AY card: Off" takes it off the bus.
+
+## Expansion page 1
+
+The bank register's page 1 is the expansion slot (CSX1/ on the
+schematic), and the OSD's "Expansion" says what is in it:
+
+- **Floppy** - the Сура НГМД: a КР1818ВГ93 (WD1793) with
+  `tang/rom/pk8000_fdc.rom` (8 KB) at 0000h-1FFFh of every quarter that
+  shows page 1, and at 3FF7h-3FFFh: 3FF7h the control byte (bit 7 reset,
+  bit 6 drive, bit 4 side), 3FF8h-3FFBh the ВГ93's command/status,
+  track, sector and data registers, 3FFCh-3FFFh four bytes the software
+  writes and reads back through the controller's state - a read answers
+  the byte at index {DRQ, INTRQ}, a wait loop in one instruction
+  (Emu80's `Pk8000FdcStatusRegisters`).  `.fdd` images are 80 tracks x
+  2 sides x 5 sectors x 1024 bytes, track-side-sector order, 819200
+  bytes, in SD slots 1 (A) and 2 (B).  `fdc.v` around MiSTer's
+  `wd1793.sv`.  The ROM boots from the drive after reset if it finds a
+  system on it: a P/M system disk brings up P/M's file-manager shell
+  (seen in simulation with DISK1 of the 2009 set).  The disks carry a
+  CP/M file system - two system cylinders, a 128-entry directory in the
+  two 2 KB blocks after them, 16-bit block numbers, eight to an extent -
+  which `tools/mkfdd.py` reads and writes; `soft/cf.img` has the same
+  layout with its directory at 8600h.
+- **IDE** - the community's IDE/CF adapter: a ВВ55 at 50h-53h in front
+  of an ATA drive, port A = {reset, IOR, IOW, CS[1:0], address[2:0]},
+  ports B and C the data word's high and low bytes; the drive answers
+  EC/20/21/30/31/EF in LBA (Emu80's `PpiAtaAdapter` and `AtaDrive`).
+  `tang/rom/pk8000_hdd.rom` (9322 bytes) at 0000h-2FFFh of page 1;
+  the image (`.img`/`.hdd`) in SD slot 3.  `soft/cf.img` is the
+  2 MB card image Emu80 ships, "most of the programs written for the
+  ПК8000 except BASIC ones"; the machine boots from it after reset.
+  `ide.v`.
+- **ROM disk** - the cartridge: a 16 KB page of a large ROM selected by
+  a write to port 77h; quarters 0 and 1 in page 1 show the image's
+  first 16 KB, quarters 2 and 3 the selected page (Emu80's
+  `Pk8000RomDisk`).  The image (`.bin`/`.rom`, up to 1 MB) in SD slot 4
+  is copied into the SDRAM above the machine's 64 KB when it is
+  mounted, with the CPU held meanwhile; `romdisk.v`.  No image of a
+  real cartridge is in the repository.
+- **None** - page 1 reads 0FFh.
+
+Page 2 (CSX2/) has nothing and reads 0FFh.  Writes to any page go to
+the RAM under it.  Only one thing can be in page 1 at a time - Emu80's
+configurations are exclusive the same way - so the floppy and the hard
+disk are not both available in one session.
+
+## The printer
+
+Port 85h is the data, port 86h bit 7 the strobe.  Decoded in
+`ports.v`, connected to nothing: a Tang Nano 20K has no parallel port
+to give it.
