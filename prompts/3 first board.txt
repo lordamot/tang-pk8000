@@ -203,3 +203,19 @@ Expansion switches.  The Hardware form has Floppy, IDE and ROM disk as three Off
 - Docs: howto.md (also its menu section and stale "no tape, no floppy"), mcu.md, platform.md, fpga.md, build.md, README (ru/en), CLAUDE.md.
 
 Claims: built, linted, simulated, timed.  Not on the board.  Both binaries need flashing (BL616 first, boot mode; then replug, make flash-fpga, power-cycle).  An old /pk8000.ini on the card still carries 'x'; the firmware ignores a letter it does not know, and Save settings writes the new ones.  Nothing committed - your "fixed start" commit is the base.
+
+extend bas run feature: it should support russian symbols in utf8 - so decode them into sura's symbol table when moving program to run; those which are can not encode for sura - replace by *
+
+****
+
+Done, and checked end to end in simulation.
+
+The machine's character set is КОИ-8: the ROM's banner at 1762h spells "версия" as D7 C5 D2 D3 C9 D1 and "ПК" as F0 EB, which is KOI8-R's letter block (а..я at C0h-DFh in that table's order, А..Я 20h above).  So:
+- mnano/bas.c: bas_char() decodes a UTF-8 sequence and gives the machine's byte - ASCII as is, Cyrillic А-Я/а-я into KOI8-R, everything else above 7Fh (Ё/ё among it: KOI8-R's B3h/A3h are not known to be in the Сура's font; typographic dashes and quotes, №, €) into '*'; a broken sequence is '*' too, a byte-order mark is dropped.  Applied in strings, after REM, and to a Cyrillic letter outside a string as well.
+- tools/mkcas.py: the same koi8() so a .cas and the firmware agree; reads the file as UTF-8.
+- soft/rus.bas: a test program - a REM with ёлка, dashes, «», №; PRINT "ПК8000 версия 1.2", "привет, Сура!", both alphabets, and "ёЁ — * €".
+- make bas-test now runs both tokenisers on demo.bas and rus.bas, compares, and checks the ROM's own "версия" bytes are in the result and that exactly ten characters became '*'.  Passes.
+- Sim, +BAS=rus_py.tok: the frame at 3.05 s shows the ROM printing "ПК8000 версия 1.2", "привет, Сура!" and both alphabets in its own font, and line 50 as "** * * *".  639200 SDRAM checks 0 wrong.
+- make fw: bin/bl616.bin 11:54.  Docs: platform.md (the character set), mcu.md, howto.md, build.md, CLAUDE.md's tokens trap, progress.md.
+
+Claims: built, host-tested, simulated.  Not on the board - the BL616 needs flashing (boot mode, make flash-mcu); the FPGA is unchanged since 11:23 and still needs its flash from the previous step.  Nothing committed.

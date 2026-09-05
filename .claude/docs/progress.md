@@ -29,8 +29,9 @@ framework:
   expansion device on its own menu switch, the first on owning page 1
   (5 Sep; until then one choice of the three);
 - the firmware: core id 7, the keymap, the image slots and the switches
-  in the menu, settings on the card, "Run .bas" (a text program
-  tokenised and poked into the RAM through `poke.v`);
+  in the menu, settings on the card, "Run .bas" (a UTF-8 text program
+  tokenised - Cyrillic into КОИ-8, the unencodable into `*` - and
+  poked into the RAM through `poke.v`);
 - lint, a full-machine simulation with checks and frames, a card model
   that serves host files as the images, a host walk of the menu, the
   bitstream with the timing gate.
@@ -282,7 +283,13 @@ makes about 15 ms of machine time a second.
   P/M 2.2 shell to its ">" prompt by 3.7 s, in green on black in a
   different screen bank.  Rerun 5 Sep midday through the new switch
   letter (`+EXP=2` sets `i`): the same ">" at 3.8 s, 504292 SDRAM
-  checks 0 wrong, 0 refused ACTIVEs.  That is the ВВ55-to-ATA path, the LBA read
+  checks 0 wrong, 0 refused ACTIVEs.
+- **Russian in "Run .bas"** (5 Sep midday): `+BAS=build/menu/rus_py.tok`
+  (`soft/rus.bas` through `mkcas.py --tok`, byte-identical to `bas.c`'s
+  output by `make bas-test`).  The frame at 3.05 s shows the ROM
+  printing "ПК8000 версия 1.2", "привет, Сура!" and both alphabets in
+  its own font from the КОИ-8 bytes, and line 50's Ё, dash and euro as
+  `*`.  639200 SDRAM checks 0 wrong.  Not yet on a board.  That is the ВВ55-to-ATA path, the LBA read
   command, 8/16-bit data and the ROM decode all exercised by the
   software the community actually uses.
 - **Floppy**: `+EXP=1 +FDDA=blank.fdd` (819200 zero bytes).  The НГМД

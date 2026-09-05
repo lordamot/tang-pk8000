@@ -27,7 +27,7 @@ make bitstream   build the FPGA bitstream -> bin/tang.fs (about 30 s)
 make timing      the timing gate alone, on the last PnR report
 make fw          build the BL616 firmware -> build/fw/bl616.bin
 make menu-test   the OSD menu on the host: every form walked, screens as PNG
-make bas-test    the firmware's BASIC tokeniser on the host against tools/mkcas.py
+make bas-test    the firmware's BASIC tokeniser on the host against tools/mkcas.py (soft/demo.bas, soft/rus.bas: UTF-8 Cyrillic into КОИ-8)
 make tokens      regenerate mnano/pk8000_tokens.h from the ROM
 make rom         regenerate tang/src/pk8000/pk8000_rom.v from tang/rom/pk8000_v12.rom
 make waits       regenerate tang/src/pk8000/waits_rom.v from tools/waits_rom.py

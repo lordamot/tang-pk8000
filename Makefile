@@ -206,13 +206,22 @@ MENU_TEST_SRC := mnano/menu_test.c mnano/menu.c \
   $(wildcard mnano/u8g2/csrc/*.c) mnano/u8g2/sys/bitmap/common/u8x8_d_bitmap.c \
   $(FATFS_SRC)/ff.c $(FATFS_SRC)/ffunicode.c
 # The tokeniser the firmware uses for "Run .bas" (mnano/bas.c) against the
-# one tools/mkcas.py uses for a .cas: the same bytes for soft/demo.bas.
-bas-test: mnano/bas.c mnano/bas_test.c mnano/pk8000_tokens.h soft/demo.bas
+# one tools/mkcas.py uses for a .cas: the same bytes for soft/demo.bas and
+# for soft/rus.bas (UTF-8 Cyrillic into КОИ-8, the rest '*'), and the
+# ROM's own spelling of "версия" (D7 C5 D2 D3 C9 D1, at 1762h) in the result.
+bas-test: mnano/bas.c mnano/bas_test.c mnano/pk8000_tokens.h soft/demo.bas soft/rus.bas
 	@mkdir -p $(BUILD)/menu
 	$(CC) -O -Wall -DBAS_HOST_TEST -Imnano -o $(BUILD)/menu/bas_test mnano/bas.c mnano/bas_test.c
 	$(BUILD)/menu/bas_test soft/demo.bas $(BUILD)/menu/demo_fw.tok
 	$(PYTHON) $(TOOLS)/mkcas.py --tok $(BUILD)/menu/demo_py.tok soft/demo.bas
-	cmp $(BUILD)/menu/demo_fw.tok $(BUILD)/menu/demo_py.tok && echo "bas-test: ok"
+	cmp $(BUILD)/menu/demo_fw.tok $(BUILD)/menu/demo_py.tok
+	$(BUILD)/menu/bas_test soft/rus.bas $(BUILD)/menu/rus_fw.tok
+	$(PYTHON) $(TOOLS)/mkcas.py --tok $(BUILD)/menu/rus_py.tok soft/rus.bas
+	cmp $(BUILD)/menu/rus_fw.tok $(BUILD)/menu/rus_py.tok
+	$(PYTHON) -c "import sys; t=open('$(BUILD)/menu/rus_fw.tok','rb').read(); \
+	  ok = bytes.fromhex('D7C5D2D3C9D1') in t and bytes.fromhex('F0EB38303030') in t and t.count(b'*') == 10; \
+	  sys.exit(0 if ok else 'bas-test: the KOI-8 bytes are wrong')"
+	@echo "bas-test: ok"
 
 tokens:
 	$(PYTHON) $(TOOLS)/mkcas.py --header mnano/pk8000_tokens.h

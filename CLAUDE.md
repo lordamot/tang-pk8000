@@ -249,7 +249,11 @@ the Makefile, what lint and simulation do and do not cover, flashing),
   reads eight bytes past the program's final 00 00, so a `.cas` needs
   a zero trailer longer than MSX's seven, or it is "Device I/O error"
   with the program already in memory.  `make bas-test` keeps `bas.c`
-  and `mkcas.py` agreeing.
+  and `mkcas.py` agreeing, on `soft/demo.bas` and on `soft/rus.bas`.
+  **The character set is КОИ-8** (the banner's "версия" is D7 C5 D2 D3
+  C9 D1 at 1762h): both tokenisers turn UTF-8 Cyrillic into KOI8-R's
+  letter bytes and every other non-ASCII character into `*`, Ё/ё
+  included until the font is seen to have them.
 - **A register decode is not verified until software has used it.**
   Port 84h's mode bits were read from Emu80 into a table in
   `platform.md` and decoded in `ports.v` with the graphics half

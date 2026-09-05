@@ -78,11 +78,18 @@ floppies (`.fdd`), 3 hard disk (`.img`, `.hdd`), 4 ROM disk (`.bin`,
 file there calls `bas_run()` (`bas.c`), which resets the machine, waits
 three seconds for BASIC's prompt, tokenises the text line by line with
 the ROM's own table (`pk8000_tokens.h`, generated from the ROM by
-`tools/mkcas.py --header`) and sends each line to its address at 4001h
+`tools/mkcas.py --header`) - the file is UTF-8, and a Cyrillic letter
+anywhere in a line becomes its КОИ-8 byte (`bas_char`, the table the
+ROM's own banner confirms; `platform.md`), Ё/ё and any other character
+above 7Fh become `*`, a byte-order mark is dropped - and sends each
+line to its address at 4001h
 through the SYS target's command 6 (`sysctrl.v`, `poke.v`: an address,
 then bytes), then the three end-of-program pointers at F930h, then
 "run" and Enter through the keyboard path.  `make bas-test` runs the
-tokeniser on the host against `tools/mkcas.py`; the settings file does
+tokeniser on the host against `tools/mkcas.py` on `soft/demo.bas` and
+on `soft/rus.bas` (Russian strings, a REM, Ё, dashes and quotes that
+must come out as `*`) and checks the ROM's own bytes for "версия" are
+in the result; the settings file does
 not re-run the last `.bas` at power-up.  The
 letters are `sysctrl.v`'s CMD 4 ids, and a value needs three edits:
 the letter in the form string, an entry in `variables_pk8000[]` (the

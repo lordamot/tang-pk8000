@@ -247,7 +247,14 @@ carry a copy.  Numbers are not encoded at all: `a=5:b=300:c=70000:
 d=1.5:e=&h1f:pset(10,20),15:goto 10` typed at the keyboard and dumped
 from RAM (`+TYPE_STR= +RAMDUMP`) is the digits as text, so a line in
 memory is exactly the text with the keywords and operators replaced by
-their bytes and the letters outside strings in capitals.  The program
+their bytes and the letters outside strings in capitals.  **The
+character set is КОИ-8**: the ROM's banner at 1762h spells "версия" as
+D7 C5 D2 D3 C9 D1 and "ПК" as F0 EB, which is KOI8-R's letter block
+(а..я at C0h-DFh in that table's order - а C1, б C2, в D7 ... я D1 -
+and А..Я 20h above), so a string in a program holds those bytes;
+`bas.c` and `mkcas.py` turn UTF-8 Cyrillic into them and anything
+else above 7Fh into `*` (Ё/ё among it: KOI8-R's B3h/A3h are not known
+to be in the machine's font).  The program
 starts at 4001h (TXTTAB, kept at F92Eh), each line {link, number, text,
 0}, a 00 00 link at the end, and VARTAB, ARYTAB, STREND at F930h,
 F932h, F934h point after it.  This ROM's `CLOAD` wants its string: `cload"NAME` (the

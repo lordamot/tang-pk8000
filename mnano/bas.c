@@ -15,6 +15,14 @@
 // from tang/rom/pk8000_v12.rom); tools/mkcas.py writes the same bytes
 // into a .cas, and the two must agree.
 //
+// The text file is UTF-8.  The machine's character set is КОИ-8: the
+// ROM's banner spells "версия" as D7 C5 D2 D3 C9 D1 and "ПК" as F0 EB
+// (1762h), the KOI8-R letters (а..я at C0h-DFh in that table's order,
+// А..Я 20h above).  A Cyrillic letter is turned into that byte wherever
+// it stands; Ё/ё (KOI8-R B3h/A3h, not known to be in the Сура's font),
+// any other character above 7Fh and a broken UTF-8 sequence become '*'.
+// A byte-order mark at the start of a line is dropped.
+//
 // The FPGA side is sysctrl.v's CMD 6 (an address, then bytes) and
 // poke.v, which writes them into the SDRAM in T-states the CPU leaves
 // free.  So: reset the machine, wait for BASIC's prompt, send the lines
@@ -33,10 +41,41 @@
 #define BAS_PTRS     0xF930    // VARTAB, ARYTAB, STREND
 #define BAS_MAXLINE  250       // bytes of one tokenised line
 
+// the 32 lowercase letters а..я (U+0430..U+044F) in KOI8-R
+static const unsigned char koi8_lower[32] = {
+  0xC1, 0xC2, 0xD7, 0xC7, 0xC4, 0xC5, 0xD6, 0xDA,   // а б в г д е ж з
+  0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF, 0xD0,   // и й к л м н о п
+  0xD2, 0xD3, 0xD4, 0xD5, 0xC6, 0xC8, 0xC3, 0xDE,   // р с т у ф х ц ч
+  0xDB, 0xDD, 0xDF, 0xD9, 0xD8, 0xDC, 0xC0, 0xD1 }; // ш щ ъ ы ь э ю я
+
+// One UTF-8 sequence at *text into the machine's byte; advances the
+// pointer past it.  ASCII is itself; Cyrillic is KOI-8; the rest is '*'.
+static unsigned char bas_char(const char **text) {
+  const unsigned char *p = (const unsigned char *)*text;
+  unsigned c = p[0];
+  int len = 1;
+  if(c < 0x80) { (*text)++; return c; }
+  // the code point, if the sequence is well formed
+  unsigned cp = 0;
+  if((c & 0xE0) == 0xC0) { cp = c & 0x1F; len = 2; }
+  else if((c & 0xF0) == 0xE0) { cp = c & 0x0F; len = 3; }
+  else if((c & 0xF8) == 0xF0) { cp = c & 0x07; len = 4; }
+  else { (*text)++; return '*'; }              // a stray continuation byte
+  for(int i = 1; i < len; i++) {
+    if((p[i] & 0xC0) != 0x80) { *text += i; return '*'; }   // cut short
+    cp = (cp << 6) | (p[i] & 0x3F);
+  }
+  *text += len;
+  if(cp >= 0x0430 && cp <= 0x044F) return koi8_lower[cp - 0x0430];
+  if(cp >= 0x0410 && cp <= 0x042F) return koi8_lower[cp - 0x0410] + 0x20;
+  return '*';
+}
+
 // One line of text into its tokenised form (without the link, the
 // number and the terminating zero).  Returns the length, or -1 if the
 // line does not start with a number.
 int bas_tokenise(const char *text, unsigned char *out, int max, unsigned *number) {
+  if(!strncmp(text, "\xEF\xBB\xBF", 3)) text += 3;     // a UTF-8 byte-order mark
   while(*text == ' ' || *text == '\t') text++;
   if(!isdigit((unsigned char)*text)) return -1;
   *number = 0;
@@ -48,13 +87,14 @@ int bas_tokenise(const char *text, unsigned char *out, int max, unsigned *number
   int in_string = 0;
   while(*text && *text != '\r' && *text != '\n') {
     if(n >= max - 1) return n;
-    if(verbatim) { out[n++] = *text++; continue; }
+    if(verbatim) { out[n++] = bas_char(&text); continue; }
     if(in_string) {
       if(*text == '"') in_string = 0;
-      out[n++] = *text++;
+      out[n++] = bas_char(&text);
       continue;
     }
     if(*text == '"') { in_string = 1; out[n++] = *text++; continue; }
+    if((unsigned char)*text >= 0x80) { out[n++] = bas_char(&text); continue; }   // Cyrillic outside a string: as it is
 
     // the longest keyword or operator here (the table is longest-first)
     const char *best = NULL; unsigned char token = 0;

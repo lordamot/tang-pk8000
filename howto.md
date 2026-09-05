@@ -72,7 +72,11 @@ Esc closes.
 - **Tape, Floppy A, Floppy B, Hard disk** - the image slots on the card
   (`.cas`, `.fdd`, `.img`/`.hdd`).
 - **Run .bas** - a plain-text BASIC program from the card is tokenised
-  and put into the machine's memory as if typed, then run.
+  and put into the machine's memory as if typed, then run.  The file is
+  UTF-8: Russian letters in strings and REMs come out in the machine's
+  own КОИ-8, and a character the machine has no code for (Ё among
+  them, typographic dashes and quotes) comes out as `*`.  `soft/rus.bas`
+  is an example.
 - **Reset** - the machine restarts.
 - **Hardware** - **Floppy**, **IDE**, **ROM disk** (Off / On, each on
   its own: the floppy controller with its ROM, the IDE/CF adapter with
