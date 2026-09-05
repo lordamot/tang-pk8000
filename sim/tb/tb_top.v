@@ -28,7 +28,8 @@
 //                 +CLOAD_VAR=<n> for the other spellings, none of which load);
 //                 $test$plusargs matches prefixes, so +TYPE_CLOAD and
 //                 +TYPE_MS= would both read as +TYPE without the guard below
-//   +EXP=<n>      the OSD's expansion: 0 none, 1 floppy, 2 IDE, 3 ROM disk
+//   +EXP=<n>      the OSD's expansion switches: 1 floppy, 2 IDE, 3 ROM disk (one
+//                 on); +EXP_FDD +EXP_IDE +EXP_ROM turn each on as well
 //   +NOWAITS      run with the video controller's cost turned off ('w' 0)
 //   +TAPE= +FDDA= +FDDB= +HDD= +ROMDISK=<file>   images (sim/stubs/sd_card_sim.v)
 //   +SDFAST       the card answers in microseconds, not a millisecond
@@ -397,7 +398,9 @@ module tb_top;
         sys_set_val("w", $test$plusargs("NOWAITS") ? 8'd0 : 8'd1);
         sys_set_val("j", 8'd0);
         if (!$value$plusargs("EXP=%d", exp_n)) exp_n = 0;
-        sys_set_val("x", exp_n[7:0]);
+        sys_set_val("f", {7'd0, (exp_n == 1) || $test$plusargs("EXP_FDD")});
+        sys_set_val("i", {7'd0, (exp_n == 2) || $test$plusargs("EXP_IDE")});
+        sys_set_val("r", {7'd0, (exp_n == 3) || $test$plusargs("EXP_ROM")});
         sys_set_val("T", 8'd1);
         sys_set_val("y", 8'd1);
         sys_set_val("p", 8'd0); sys_set_val("q", 8'd0); sys_set_val("K", 8'd0);

@@ -96,7 +96,7 @@ The peripherals are simulated against `sim/stubs/sd_card_sim.v`, which
 serves host files as the image slots - `+TAPE=`, `+FDDA=`, `+FDDB=`,
 `+HDD=`, `+ROMDISK=` - on `sd_card.v`'s core-side interface, with
 `+SDFAST` for a card that answers in microseconds and `+SDTRACE` for
-every sector.  `+EXP=<n>` is the OSD's expansion choice.  The three
+every sector.  `+EXP=<n>` turns one expansion switch on (1 floppy, 2 IDE, 3 ROM disk); `+EXP_FDD`, `+EXP_IDE`, `+EXP_ROM` turn each on as well, for combinations.  The three
 runs of 4 Sep 2026 that `progress.md` reports:
 
 ```

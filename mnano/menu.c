@@ -106,12 +106,16 @@ static const char main_form_pk8000[] =
   "T,Debug,;"                           // the debug window (menu_debug_open)
   "B,Save settings,S;";
 
-// 12 entries: the form scrolls (menu_entry_go keeps four rows in view)
+// 14 entries: the form scrolls (menu_entry_go keeps four rows in view).
+// The three expansion devices each have a switch; when more than one is
+// on the first of them, in this order, owns expansion page 1 (top.v).
 static const char hardware_form_pk8000[] =
   "Hardware,0|7;"                       // return to the main form, entry 7
   // --------
-  "L,Expansion:,None|Floppy|IDE|ROM disk,x;"  // what sits in expansion slot 1
-  "F,ROM disk:,4|bin+rom;"              // slot 4: the ROM disk cartridge
+  "L,Floppy:,Off|On,f;"                 // the НГМД controller with its ROM
+  "L,IDE:,Off|On,i;"                    // the IDE/CF adapter with its ROM
+  "L,ROM disk:,Off|On,r;"               // the ROM disk cartridge
+  "F,ROM file:,4|bin+rom;"              // slot 4: the ROM disk's image
   "L,Tape:,Stop|Play,T;"                // the tape recorder's motor
   "B,Rewind tape,e;"                    // a pulse: rewind to the start
   "L,AY card:,Off|On,y;"                // the AY-3-8910 sound card
@@ -149,7 +153,9 @@ menu_variable_t variables_pk8000[] = {
   { 'b', { 1 }},    // Beeper on
   { 'w', { 1 }},    // CPU waits on
   { 'j', { 0 }},    // Joysticks normal
-  { 'x', { 0 }},    // Expansion slot 1 empty
+  { 'f', { 0 }},    // Floppy controller out
+  { 'i', { 0 }},    // IDE adapter out
+  { 'r', { 0 }},    // ROM disk out
   { 'T', { 1 }},    // Tape plays
   { 'y', { 1 }},    // AY sound card on
   { 'p', { 0 }},    // Floppy A writable

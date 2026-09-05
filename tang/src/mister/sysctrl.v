@@ -42,7 +42,9 @@ module sysctrl (
   output reg        system_beeper,    // 'b' 0 mute, 1 on: the beeper in the mix
   output reg        system_waits,     // 'w' 1 = the video controller's cost paid by the CPU (cpu8080.v)
   output reg        system_joyswap,   // 'j' 1 = joystick ports exchanged
-  output reg [1:0]  system_exp,       // 'x' expansion page 1: 0 none, 1 floppy, 2 IDE, 3 ROM disk
+  output reg        system_fdd,       // 'f' the floppy controller is in (page 1, first)
+  output reg        system_ide,       // 'i' the IDE adapter is in (ports 50h-53h; page 1 if no floppy)
+  output reg        system_rdk,       // 'r' the ROM disk is in (port 77h; page 1 if neither)
   output reg        system_tape,      // 'T' 0 stop, 1 play (with the motor)
   output reg        system_rewind,    // 'e' a level while the OSD button is down
   output reg        system_ay,        // 'y' the AY card at 14h/15h
@@ -88,7 +90,9 @@ always @(posedge clk) begin
       system_beeper <= 1'b1;
       system_waits  <= 1'b1;
       system_joyswap <= 1'b0;
-      system_exp    <= 2'd0;
+      system_fdd    <= 1'b0;
+      system_ide    <= 1'b0;
+      system_rdk    <= 1'b0;
       system_tape   <= 1'b1;
       system_rewind <= 1'b0;
       system_ay     <= 1'b1;
@@ -145,7 +149,9 @@ always @(posedge clk) begin
                     if(id == "b") system_beeper  <= data_in[0];
                     if(id == "w") system_waits   <= data_in[0];
                     if(id == "j") system_joyswap <= data_in[0];
-                    if(id == "x") system_exp     <= data_in[1:0];
+                    if(id == "f") system_fdd     <= data_in[0];
+                    if(id == "i") system_ide     <= data_in[0];
+                    if(id == "r") system_rdk     <= data_in[0];
                     if(id == "T") system_tape    <= data_in[0];
                     if(id == "e") system_rewind  <= data_in[0];
                     if(id == "y") system_ay      <= data_in[0];

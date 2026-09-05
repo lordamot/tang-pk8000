@@ -29,14 +29,14 @@ tang/rom/ the ROM images and the schematics the design was read from
 
 `make lint` and `make sim` are the cheap checks; `make bitstream` is the
 real one.  `make help` lists the rest.  **What cannot be done here is
-running it on a board, and the three bitstreams that have been on one
-(the evening of 4 Sep 2026) did not boot: the ROM's RAM test passed
-and nothing after it did, and the SDRAM's own four-byte self-test
-passed too - see `.claude/docs/progress.md`, "The first board", "The
-second flash", "The third flash".  The third carries `memcheck.v` and
-the OSD's Debug page to say what the RAM gave the CPU; a firmware bug
-showed About in its place, fixed 5 Sep, and the page is still
-unread.**  So "it builds", "it
+running it on a board.  Three bitstreams (the evening of 4 Sep 2026)
+did not boot - the ROM's RAM test passed and nothing after it did, the
+SDRAM's four-byte self-test passed too - and the fourth (5 Sep, 11:01)
+does: the OSD's Debug page (`memcheck.v`) named the fault, a column
+word with no A10, and the operator reports the machine working.  See
+`.claude/docs/progress.md`, "The first board" through "The fourth
+flash".  Anything built since is untested on the board until it says
+otherwise there.**  So "it builds", "it
 lints", "it boots in simulation" and "it meets timing" are four
 different claims, none of them is "it works", and you should say which
 one you are making.
@@ -53,8 +53,9 @@ controller's cost to the CPU paid as wait states from Emu80's measured
 tables.  Around it the peripherals of 0.2.0: a `.cas` tape player, the
 НГМД (MiSTer's wd1793) with its ROM, the IDE/CF adapter with its ROM,
 the ROM disk cartridge in the SDRAM, the AY card - all of them fed from
-the SD card's image slots through `sd_arbiter.v`, and one of the three
-expansion-page devices at a time by the OSD's 'x'.
+the SD card's image slots through `sd_arbiter.v`, and the three
+expansion-page devices each on an OSD switch (f, i, r), the first on
+owning page 1.
 
 ```
 Logic 33%   Register 18%   BSRAM 28/46 (61%)   PLL 2/2 (100%)  [5 Sep 2026 PnR, v0.2.0 + memcheck.v + A10; clk30 makes 65.8 MHz, 0 violations]

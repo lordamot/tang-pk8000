@@ -185,9 +185,11 @@ gated to it, and `done`.  Only one request ever reaches `sd_card.v` at
 a time, which the MCU's one-hot reading requires.
 
 The expansion page: `top.v` routes a page-1 read to `fdc.v`, the IDE
-ROM, or the SDRAM at `romdisk.v`'s address by the OSD's 'x', and a
-page-1 write to the RAM under it and, with the floppy in, to `fdc.v`
-as well.  `rd_src` grew from four sources to eight (RAM, ROM, ports,
+ROM, or the SDRAM at `romdisk.v`'s address - to the first device that
+is on in that order, each on its own OSD switch (f, i, r; `exp_fdc`,
+`exp_ide`, `exp_rom` are the page's owner, `system_ide` alone gates
+the IDE's ports) - and a page-1 write to the RAM under it and, with
+the floppy in, to `fdc.v` as well.  `rd_src` grew from four sources to eight (RAM, ROM, ports,
 FDC, HDD ROM, AY, IDE, none).
 
 ## The MCU's way into the RAM

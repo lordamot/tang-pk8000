@@ -31,8 +31,9 @@ vm80a (1801BM1/Vslav, CC-BY 3.0), точная копия кристалла 580
 - Звуковая карта AY-3-8910 на портах 14h/15h.
 - Бипер и AY по HDMI и I²S.
 - Меню по **F12**: образы, «Run .bas» (текстовая программа на Бейсике с
-  карты - сразу в память машины, как будто набрана), «Expansion» (что
-  стоит в слоте расширения: дисковод, IDE или ROM-диск - по одному),
+  карты - сразу в память машины, как будто набрана), три переключателя
+  расширения (дисковод, IDE, ROM-диск - каждый отдельно; если включено
+  несколько, страницу 1 занимает первый из них в этом порядке),
   магнитофон, AY, громкость, бипер, задержки процессора, джойстики,
   защита записи, «About», сохранение настроек на карту.
 - В `soft/`: образ CF из Emu80, системная дискета с AY-плеером, демо
@@ -141,8 +142,8 @@ prompt in simulation.  Not yet run on a board.**
 - The beeper and the AY over HDMI and I²S.
 - A menu on **F12**: the images, "Run .bas" (a plain-text BASIC program
   from the card straight into the machine's memory, as if typed),
-  "Expansion" (what is in the expansion slot: the floppy, the IDE or the
-  ROM disk, one at a time), tape, AY, volume, beeper, CPU waits,
+  three expansion switches (floppy, IDE, ROM disk, each on its own;
+  with more than one on, the first in that order owns page 1), tape, AY, volume, beeper, CPU waits,
   joysticks, write protection, About, settings saved to the card.
 - In `soft/`: Emu80's CF image, a system floppy with the AY player, a
   four-mode graphics demo as `.bas` and `.cas`.

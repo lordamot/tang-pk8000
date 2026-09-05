@@ -222,23 +222,25 @@ int main(int argc, char **argv) {
         "main form entries: %s", menu->forms[0]);
   CHECK(menu->entries == 11, "main form has %d entries, expected 11", menu->entries);
   CHECK(strstr(menu->forms[1], "Hardware,0|7;") == menu->forms[1], "Hardware title: %s", menu->forms[1]);
-  CHECK(strstr(menu->forms[1], "F,ROM disk:,4|bin+rom;") && strstr(menu->forms[1], "B,Rewind tape,e;"),
+  CHECK(strstr(menu->forms[1], "L,Floppy:,Off|On,f;") && strstr(menu->forms[1], "L,IDE:,Off|On,i;") &&
+        strstr(menu->forms[1], "L,ROM disk:,Off|On,r;") && strstr(menu->forms[1], "F,ROM file:,4|bin+rom;") &&
+        strstr(menu->forms[1], "B,Rewind tape,e;"),
         "Hardware entries: %s", menu->forms[1]);
 
   //---- the defaults went to the core, every letter once and in order, then the reset
   {
     static const char init_log[][2] = {
-      {'A',1}, {'b',1}, {'w',1}, {'j',0}, {'x',0}, {'T',1}, {'y',1}, {'p',0}, {'q',0}, {'K',0}, {'R',3}, {'R',0} };
+      {'A',1}, {'b',1}, {'w',1}, {'j',0}, {'f',0}, {'i',0}, {'r',0}, {'T',1}, {'y',1}, {'p',0}, {'q',0}, {'K',0}, {'R',3}, {'R',0} };
     int init_n = sizeof(init_log)/sizeof(init_log[0]);
     CHECK(set_n == init_n, "%d values sent at start, expected %d", set_n, init_n);
     for(int i=0;i<init_n && i<set_n;i++)
       CHECK(set_log[i][0] == init_log[i][0] && set_log[i][1] == init_log[i][1],
             "start send %d is %c=%d, expected %c=%d", i, set_log[i][0], set_log[i][1], init_log[i][0], init_log[i][1]);
   }
-  for(const char *l = "AbwjxTypqK"; *l; l++)
+  for(const char *l = "AbwjfirTypqK"; *l; l++)
     CHECK(set_count(*l) == 1, "letter %c sent %d times at start", *l, set_count(*l));
   CHECK(set_count('R') == 2 && set_last('R') == 0, "start reset: R sent %d times, last %d", set_count('R'), set_last('R'));
-  for(const char *l = "VPZeutMSHICY123cfrsJDmdhnBEGNOQUWXZ#<>"; *l; l++)
+  for(const char *l = "VPZeutMSHICY123csJDmdhnBEGNOQUWXZ#<>"; *l; l++)
     CHECK(set_last(*l) == -1, "the foreign letter %c is sent", *l);
   CHECK(open_n == 0, "an image was opened at start with no settings");
 
@@ -305,35 +307,41 @@ int main(int argc, char **argv) {
   CHECK(set_n == n && menu->form == 0 && menu->entry == 7, "left/right on Hardware did something");
   menu_do(menu, MENU_EVENT_SELECT);
   CHECK(menu->form == 1 && menu->entry == 1 && menu->offset == 0, "Hardware: form %d entry %d offset %d", menu->form, menu->entry, menu->offset);
-  CHECK(menu->entries == 13, "Hardware has %d entries, expected 13", menu->entries);
+  CHECK(menu->entries == 15, "Hardware has %d entries, expected 15", menu->entries);
   shot("hardware");
 
-  //---- Expansion: four values, right, left, both wrap, Space steps on
+  //---- the three expansion switches: Off|On each, independent of each other
   n = set_n;
-  CHECK(stepped(menu, 'x', +1, 1) && set_n == n+1, "right on Expansion: x=%d", set_last('x'));
-  CHECK(stepped(menu, 'x', +1, 2), "right to IDE: x=%d", set_last('x'));
-  CHECK(stepped(menu, 'x', +1, 3), "right to ROM disk: x=%d", set_last('x'));
-  shot("hardware-expansion-rom");
-  CHECK(stepped(menu, 'x', +1, 0), "right wraps to None: x=%d", set_last('x'));
-  CHECK(stepped(menu, 'x', -1, 3), "left wraps to ROM disk: x=%d", set_last('x'));
-  CHECK(stepped(menu, 'x', -1, 2), "left to IDE: x=%d", set_last('x'));
-  CHECK(stepped(menu, 'x', -1, 1), "left to Floppy: x=%d", set_last('x'));
-  CHECK(stepped(menu, 'x', -1, 0), "left to None: x=%d", set_last('x'));
-  menu_do(menu, MENU_EVENT_SELECT);  // space steps on: Floppy
-  CHECK(set_last('x') == 1 && menu->form == 1, "space on Expansion: x=%d", set_last('x'));
-  CHECK(stepped(menu, 'x', -1, 0), "back to None: x=%d", set_last('x'));
-  CHECK(set_n == n+10, "Expansion: %d sends for ten steps", set_n - n);
-
-  //---- ROM disk: the fifth slot, from the Hardware form
+  toggle(menu, "Floppy", 'f', 0);
+  CHECK(stepped(menu, 'f', +1, 1), "Floppy on: f=%d", set_last('f'));
   menu_do(menu, MENU_EVENT_DOWN);
-  CHECK(menu->entry == 2, "ROM disk entry %d", menu->entry);
-  selector(menu, "ROM disk", 1, 2, 4, "bin+rom");
-  load_and_eject(menu, "ROM disk", 1, 2, 4, "GAME.bin");
-  CHECK(menu->entries == 13 && menu->offset == 0, "back in Hardware: %d entries offset %d", menu->entries, menu->offset);
+  CHECK(menu->entry == 2, "IDE entry %d", menu->entry);
+  toggle(menu, "IDE", 'i', 0);
+  CHECK(stepped(menu, 'i', +1, 1), "IDE on: i=%d", set_last('i'));
+  CHECK(set_last('f') == 1, "turning the IDE on changed the floppy (f=%d)", set_last('f'));
+  menu_do(menu, MENU_EVENT_DOWN);
+  CHECK(menu->entry == 3, "ROM disk entry %d", menu->entry);
+  toggle(menu, "ROM disk", 'r', 0);
+  shot("hardware-expansion-two-on");
+  CHECK(set_n == n+14, "expansion switches: %d sends for fourteen steps", set_n - n);
+  menu_do(menu, MENU_EVENT_UP); menu_do(menu, MENU_EVENT_UP);
+  CHECK(stepped(menu, 'f', -1, 0), "Floppy off: f=%d", set_last('f'));
+  menu_do(menu, MENU_EVENT_DOWN);
+  CHECK(stepped(menu, 'i', -1, 0), "IDE off: i=%d", set_last('i'));
+  menu_do(menu, MENU_EVENT_DOWN);
+  CHECK(menu->entry == 3, "back on ROM disk: entry %d", menu->entry);
+
+  //---- ROM file: the fifth slot, from the Hardware form
+  menu_do(menu, MENU_EVENT_DOWN);
+  CHECK(menu->entry == 4, "ROM file entry %d", menu->entry);
+  selector(menu, "ROM file", 1, 4, 4, "bin+rom");
+  load_and_eject(menu, "ROM file", 1, 4, 4, "GAME.bin");
+  CHECK(menu->entries == 15 && menu->entry == 4, "back in Hardware: %d entries entry %d", menu->entries, menu->entry);
+  CHECK_VISIBLE(menu);
 
   //---- Tape: Play by default
   menu_do(menu, MENU_EVENT_DOWN);
-  CHECK(menu->entry == 3, "Tape entry %d", menu->entry);
+  CHECK(menu->entry == 5, "Tape entry %d", menu->entry);
   toggle(menu, "Tape", 'T', 1);
   CHECK(stepped(menu, 'T', +1, 0), "Tape to Stop: T=%d", set_last('T'));
   shot("hardware-tape-stop");
@@ -341,28 +349,28 @@ int main(int argc, char **argv) {
 
   //---- Rewind tape: a button that pulses 'e' and keeps the OSD open
   menu_do(menu, MENU_EVENT_DOWN);
-  CHECK(menu->entry == 4, "Rewind entry %d", menu->entry);
+  CHECK(menu->entry == 6, "Rewind entry %d", menu->entry);
   CHECK_VISIBLE(menu);
   n = set_n;
   menu_do(menu, MENU_EVENT_LEFT); menu_do(menu, MENU_EVENT_RIGHT);
-  CHECK(set_n == n && menu->form == 1 && menu->entry == 4, "left/right on Rewind did something");
+  CHECK(set_n == n && menu->form == 1 && menu->entry == 6, "left/right on Rewind did something");
   menu_do(menu, MENU_EVENT_SELECT);
   CHECK(set_n == n+2 && set_log[n][0] == 'e' && set_log[n][1] == 1 && set_log[n+1][0] == 'e' && set_log[n+1][1] == 0,
         "Rewind: %d sends, expected e=1 then e=0", set_n - n);
   CHECK(osd_visible, "Rewind closed the OSD");
-  CHECK(menu->form == 1 && menu->entry == 4, "after Rewind: form %d entry %d", menu->form, menu->entry);
+  CHECK(menu->form == 1 && menu->entry == 6, "after Rewind: form %d entry %d", menu->form, menu->entry);
   CHECK(set_count('R') == 4, "Rewind reset the core (R sent %d times)", set_count('R'));
   shot("hardware-rewind");
 
   //---- AY card
   menu_do(menu, MENU_EVENT_DOWN);
-  CHECK(menu->entry == 5, "AY card entry %d", menu->entry);
+  CHECK(menu->entry == 7, "AY card entry %d", menu->entry);
   CHECK_VISIBLE(menu);
   toggle(menu, "AY card", 'y', 1);
 
   //---- Volume: right, left, both wrap, Space steps on
   menu_do(menu, MENU_EVENT_DOWN);
-  CHECK(menu->entry == 6, "Volume entry %d", menu->entry);
+  CHECK(menu->entry == 8, "Volume entry %d", menu->entry);
   CHECK_VISIBLE(menu);
   n = set_n;
   CHECK(stepped(menu, 'A', +1, 2) && set_n == n+1, "right on Volume: A=%d", set_last('A'));
@@ -379,13 +387,13 @@ int main(int argc, char **argv) {
 
   //---- Beeper
   menu_do(menu, MENU_EVENT_DOWN);
-  CHECK(menu->entry == 7, "Beeper entry %d", menu->entry);
+  CHECK(menu->entry == 9, "Beeper entry %d", menu->entry);
   CHECK_VISIBLE(menu);
   toggle(menu, "Beeper", 'b', 1);
 
   //---- CPU waits
   menu_do(menu, MENU_EVENT_DOWN);
-  CHECK(menu->entry == 8, "CPU waits entry %d", menu->entry);
+  CHECK(menu->entry == 10, "CPU waits entry %d", menu->entry);
   CHECK_VISIBLE(menu);
   toggle(menu, "CPU waits", 'w', 1);
   CHECK(stepped(menu, 'w', -1, 0), "CPU waits off: w=%d", set_last('w'));
@@ -394,69 +402,69 @@ int main(int argc, char **argv) {
 
   //---- Joysticks
   menu_do(menu, MENU_EVENT_DOWN);
-  CHECK(menu->entry == 9, "Joysticks entry %d", menu->entry);
+  CHECK(menu->entry == 11, "Joysticks entry %d", menu->entry);
   CHECK_VISIBLE(menu);
   toggle(menu, "Joysticks", 'j', 0);
 
   //---- the three write protections
   menu_do(menu, MENU_EVENT_DOWN);
-  CHECK(menu->entry == 10, "Floppy A prot. entry %d", menu->entry);
+  CHECK(menu->entry == 12, "Floppy A prot. entry %d", menu->entry);
   CHECK_VISIBLE(menu);
   toggle(menu, "Floppy A prot.", 'p', 0);
   menu_do(menu, MENU_EVENT_DOWN);
-  CHECK(menu->entry == 11, "Floppy B prot. entry %d", menu->entry);
+  CHECK(menu->entry == 13, "Floppy B prot. entry %d", menu->entry);
   CHECK_VISIBLE(menu);
   toggle(menu, "Floppy B prot.", 'q', 0);
   menu_do(menu, MENU_EVENT_DOWN);
-  CHECK(menu->entry == 12, "HDD prot. entry %d", menu->entry);
+  CHECK(menu->entry == 14, "HDD prot. entry %d", menu->entry);
   CHECK_VISIBLE(menu);
-  CHECK(menu->offset == 8, "at the end of Hardware the offset is %d, expected 8", menu->offset);
+  CHECK(menu->offset == 10, "at the end of Hardware the offset is %d, expected 10", menu->offset);
   toggle(menu, "HDD prot.", 'K', 0);
   CHECK(stepped(menu, 'K', +1, 1), "HDD prot. on: K=%d", set_last('K'));
   shot("hardware-end-hddprot");
   CHECK(stepped(menu, 'K', -1, 0), "HDD prot. off: K=%d", set_last('K'));
 
   // every list letter: its default at start, then the steps above
-  CHECK(set_count('x') == 11 && set_count('T') == 7 && set_count('y') == 5 && set_count('A') == 9 &&
+  CHECK(set_count('f') == 7 && set_count('i') == 7 && set_count('r') == 5 && set_count('T') == 7 && set_count('y') == 5 && set_count('A') == 9 &&
         set_count('b') == 5 && set_count('w') == 7 && set_count('j') == 5 &&
         set_count('p') == 5 && set_count('q') == 5 && set_count('K') == 7 && set_count('e') == 2,
-        "sends: x %d T %d y %d A %d b %d w %d j %d p %d q %d K %d e %d",
-        set_count('x'), set_count('T'), set_count('y'), set_count('A'), set_count('b'), set_count('w'),
+        "sends: f %d i %d r %d T %d y %d A %d b %d w %d j %d p %d q %d K %d e %d",
+        set_count('f'), set_count('i'), set_count('r'), set_count('T'), set_count('y'), set_count('A'), set_count('b'), set_count('w'),
         set_count('j'), set_count('p'), set_count('q'), set_count('K'), set_count('e'));
-  for(const char *l = "AbwjxTypqK"; *l; l++)
+  for(const char *l = "AbwjfirTypqK"; *l; l++)
     CHECK(set_last(*l) == (*l == 'A' || *l == 'b' || *l == 'w' || *l == 'T' || *l == 'y'),
           "letter %c ends at %d, not its default", *l, set_last(*l));
 
   //---- paging and wrapping in Hardware
   menu_do(menu, MENU_EVENT_PGUP);
-  CHECK(menu->entry == 8, "PGUP in Hardware: entry %d", menu->entry);
+  CHECK(menu->entry == 10, "PGUP in Hardware: entry %d", menu->entry);
   CHECK_VISIBLE(menu);
   menu_do(menu, MENU_EVENT_PGUP);
-  CHECK(menu->entry == 4, "PGUP again: entry %d", menu->entry);
+  CHECK(menu->entry == 6, "PGUP again: entry %d", menu->entry);
   CHECK_VISIBLE(menu);
-  menu_do(menu, MENU_EVENT_PGUP);
+  menu_do(menu, MENU_EVENT_PGUP); menu_do(menu, MENU_EVENT_PGUP);
   CHECK(menu->entry == 1 && menu->offset == 0, "PGUP to the top: entry %d offset %d", menu->entry, menu->offset);
   menu_do(menu, MENU_EVENT_PGDOWN);
   CHECK(menu->entry == 5, "PGDOWN in Hardware: entry %d", menu->entry);
   CHECK_VISIBLE(menu);
   shot("hardware-page-2");
-  menu_do(menu, MENU_EVENT_PGDOWN); menu_do(menu, MENU_EVENT_PGDOWN);
-  CHECK(menu->entry == 12 && menu->offset == 8, "PGDOWN to the end: entry %d offset %d", menu->entry, menu->offset);
+  menu_do(menu, MENU_EVENT_PGDOWN); menu_do(menu, MENU_EVENT_PGDOWN); menu_do(menu, MENU_EVENT_PGDOWN);
+  CHECK(menu->entry == 14 && menu->offset == 10, "PGDOWN to the end: entry %d offset %d", menu->entry, menu->offset);
   menu_do(menu, MENU_EVENT_DOWN);
   CHECK(menu->entry == 0 && menu->offset == 0, "DOWN past HDD prot.: entry %d offset %d, expected the title", menu->entry, menu->offset);
   menu_do(menu, MENU_EVENT_UP);
-  CHECK(menu->entry == 12, "UP from the title: entry %d, expected 12", menu->entry);
+  CHECK(menu->entry == 14, "UP from the title: entry %d, expected 14", menu->entry);
   CHECK_VISIBLE(menu);
-  for(int i=0;i<12;i++) { menu_do(menu, MENU_EVENT_UP); CHECK_VISIBLE(menu); }
+  for(int i=0;i<14;i++) { menu_do(menu, MENU_EVENT_UP); CHECK_VISIBLE(menu); }
   CHECK(menu->entry == 0 && menu->offset == 0, "UP to the title: entry %d offset %d", menu->entry, menu->offset);
-  for(int i=0;i<12;i++) { menu_do(menu, MENU_EVENT_DOWN); CHECK_VISIBLE(menu); }
-  CHECK(menu->entry == 12, "DOWN through Hardware: entry %d", menu->entry);
+  for(int i=0;i<14;i++) { menu_do(menu, MENU_EVENT_DOWN); CHECK_VISIBLE(menu); }
+  CHECK(menu->entry == 14, "DOWN through Hardware: entry %d", menu->entry);
 
   //---- ESC closes the OSD; F12 opens it again on the same form
   menu_do(menu, MENU_EVENT_HIDE);
   CHECK(!osd_visible, "ESC left the OSD visible");
   menu_do(menu, MENU_EVENT_SHOW);
-  CHECK(osd_visible && menu->form == 1 && menu->entry == 12, "after ESC and F12: form %d entry %d", menu->form, menu->entry);
+  CHECK(osd_visible && menu->form == 1 && menu->entry == 14, "after ESC and F12: form %d entry %d", menu->form, menu->entry);
 
   //---- the title returns to the entry that opened the form
   menu_do(menu, MENU_EVENT_DOWN);    // wraps to the title

@@ -122,7 +122,7 @@ wire [1:0] system_volume;
 wire       system_beeper;
 wire       system_waits;
 wire       system_joyswap;
-wire [1:0] system_exp;         // 0 none, 1 floppy, 2 IDE, 3 ROM disk
+wire       system_fdd, system_ide, system_rdk;   // the OSD's three expansion switches
 wire       system_tape, system_rewind, system_ay, system_hdd_wprot;
 wire [1:0] system_fdd_wprot;
 wire       rd_loading;         // the ROM disk is being copied in: hold the CPU
@@ -189,12 +189,19 @@ endfunction
 wire [1:0] page_now = page_of(bank_reg, cpu_a_now);   // at the strobe
 wire       rom_now  = (page_now != 2'd3);
 
-// Expansion page 1 (the OSD's 'x'): the floppy controller's ROM and
-// registers, the IDE adapter's ROM, or the ROM disk in the SDRAM.  A
-// quarter's offset is the low 14 bits of the address.
-wire        exp_fdc = (system_exp == 2'd1);
-wire        exp_ide = (system_exp == 2'd2);
-wire        exp_rom = (system_exp == 2'd3);
+// Expansion page 1: each device has its own OSD switch (f, i, r) and
+// they may all be on, but the page is one 16 KB window and the first
+// device on, in the order floppy, IDE, ROM disk, owns it: the floppy's
+// ROM and registers, or the IDE adapter's ROM, or the ROM disk in the
+// SDRAM.  A device that is on but does not own the page keeps its ports
+// (the IDE's 50h-53h, the ROM disk's 77h) and has no ROM window - the
+// machine's own ROM probes page 1, then page 2, for a boot header, so a
+// second slot (page 2, CSX2/) is where such a device would go if its ROM
+// runs there; not built (progress.md).  A quarter's offset is the low
+// 14 bits of the address.
+wire        exp_fdc = system_fdd;
+wire        exp_ide = system_ide && !system_fdd;
+wire        exp_rom = system_rdk && !system_fdd && !system_ide;
 wire [13:0] off_now = cpu_a_now[13:0];
 wire        p1_rd   = mem_rd && (page_now == 2'd1);
 wire        p1_wr   = mem_wr && (page_of(bank_reg, cpu_adr) == 2'd1);
@@ -506,7 +513,9 @@ sysctrl sctl1 (
     .system_beeper (system_beeper ),
     .system_waits  (system_waits  ),
     .system_joyswap(system_joyswap),
-    .system_exp    (system_exp    ),
+    .system_fdd    (system_fdd    ),
+    .system_ide    (system_ide    ),
+    .system_rdk    (system_rdk    ),
     .system_tape   (system_tape   ),
     .system_rewind (system_rewind ),
     .system_ay     (system_ay     ),
@@ -719,7 +728,7 @@ assign c_inbyte[31:24]  = ide_inbyte;
 ide hd (
     .clk       (clk         ),
     .reset     (cpu_rst     ),
-    .en        (exp_ide     ),
+    .en        (system_ide  ),   // the ports are live whenever it is on; the ROM window is exp_ide
     .adr       (io_adr      ),
     .io_rd     (io_rd       ),
     .io_wr     (io_wr       ),

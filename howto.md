@@ -7,50 +7,87 @@ form of everything is under `.claude/docs/`.
 
 A ПК8000 "Сура" that starts into BASIC 1.2 with 46873 bytes free, on
 HDMI at 768x576 (the machine's 50.73 Hz), with a USB keyboard and up to
-two USB joysticks on the BL616, and the beeper over HDMI and the dock's
-I2S output.  No tape, no floppy yet - the ways of getting software in
-are what comes next (`.claude/docs/progress.md`).
+two USB joysticks on the BL616, and the beeper and the AY card over
+HDMI and the dock's I2S output.  Software comes in from the SD card: a
+`.cas` tape, `.fdd` floppies through the НГМД controller, a CF image
+through the IDE adapter, a ROM disk cartridge, or a `.bas` text put
+straight into memory.  Boots on a board since 5 Sep 2026.
 
 ## 2. The keyboard
 
 The machine's keyboard is a 10x8 matrix and the USB keyboard is mapped
-onto it by position.  Letters and digits are where they say; the rest:
+onto it by position (`mnano/pk8000.h`).  The whole layout, row by row
+of the matrix, ПК8000 key first:
 
-| PC key | ПК8000 key |
+| ПК8000 key | PC key |
 |---|---|
-| `=` | `^` |
-| `'` | `:` |
-| `` ` `` | `@` |
-| F6 | `_` |
-| F7, Pause | СТОП |
-| F8, Caps Lock | ФИКС |
-| F9, right Alt | АЛФ (Cyrillic/Latin) |
-| F10, left Alt | ГРФ |
-| F11 | СЕЛ |
-| Home / End | home / end (row 9) |
-| PgUp / PgDn | page home / page end |
-| keypad 7 3 5 4 6 | the row-9 cursor keys |
-| keypad `*` `/` `-` | ВСТ УДЛ СТРН |
-| Insert, Delete, Backspace, Tab, Esc, Enter, Space, cursors | themselves |
-| F12 | the menu (never reaches the machine) |
+| `0` `1` `2` `3` `4` `5` `6` `7` `8` `9` | the digits |
+| `,` `-` `.` `/` | `,` `-` `.` `/` |
+| `:` | `'` |
+| `;` | `;` |
+| `[` `]` `\` | `[` `]` `\` (and the ISO key next to Enter) |
+| `^` | `=` |
+| `_` | F6 |
+| `@` | `` ` `` |
+| `A` .. `Z` | the letters |
+| РГ (Shift) | Shift |
+| УПР (Ctrl) | Ctrl |
+| ГРФ (Graph) | left Alt, F10 |
+| АЛФ (Cyrillic/Latin) | right Alt, F9 |
+| ФИКС (Caps) | Caps Lock, F8 |
+| F1 .. F5 | F1 .. F5 |
+| ESC, TAB | Esc, Tab |
+| СТОП | F7, Pause |
+| ЗБ (Backspace) | Backspace |
+| СЕЛ | F11 |
+| ВВОД (Enter) | Enter, keypad Enter |
+| ПРОБЕЛ | Space |
+| СТРН (Clear) | keypad `-` |
+| ВСТ (Insert) | Insert, keypad `*` |
+| УДЛ (Delete) | Delete, keypad `/` |
+| ← ↑ ↓ → | the cursor keys; keypad 8 is ↑, keypad 2 is ↓ |
+| home-up-left | keypad 7 |
+| end-down-right | keypad 3, keypad 9 |
+| МЕНЮ | keypad 5 |
+| home | Home, keypad 4, keypad 1 |
+| end | End, keypad 6 |
+| page-home | PgUp |
+| page-end | PgDn, keypad 0, keypad `.` |
+| (the menu) | F12 - never reaches the machine |
 
-Shift and Ctrl are РГ and УПР.  Letters are lower case unshifted
-(Caps Lock is ФИКС).  What the digit keys type with Shift is the
-machine's own layout, not the PC's, and is not yet documented here -
-try it; a firmware layer that maps PC digits and symbols onto it is on
-the list once it is known.
+What the keys type is the ROM's business and the machine's own layout,
+not the PC's.  Measured in simulation (`.claude/docs/platform.md`):
+letters are lower case unshifted and capitals with Shift or under
+ФИКС; the digit row is the other way round from a PC - a digit key
+alone types the symbol on its cap (the `2` key alone is `"`) and Shift
+gives the digit; the `/` key alone is `?` and Shift+`/` is `/`; Shift+`;`
+is `+`.  A firmware layer that maps PC digits and symbols onto that is
+on the list (`.claude/docs/progress.md`).
 
 ## 3. The menu
 
 F12.  Cursor keys move, left/right step a value, Space or Enter selects,
 Esc closes.
 
+- **Tape, Floppy A, Floppy B, Hard disk** - the image slots on the card
+  (`.cas`, `.fdd`, `.img`/`.hdd`).
+- **Run .bas** - a plain-text BASIC program from the card is tokenised
+  and put into the machine's memory as if typed, then run.
 - **Reset** - the machine restarts.
-- **Hardware** - Volume (Mute / 33% / 66% / 100%); Beeper (Mute / On);
-  CPU waits (Off / On: On is the real machine's speed, with the video
-  controller's stalls; Off is about a third faster); Joysticks (Normal /
-  Swapped).
-- **About**.
+- **Hardware** - **Floppy**, **IDE**, **ROM disk** (Off / On, each on
+  its own: the floppy controller with its ROM, the IDE/CF adapter with
+  its ROM, the ROM disk cartridge.  All three share expansion page 1,
+  and when more than one is on the first of them in that order owns
+  the page; the others keep their ports - the IDE's 50h-53h, the ROM
+  disk's 77h - but have no ROM window, so a machine that should boot
+  from the CF needs the floppy off); **ROM file** (the ROM disk's
+  image); Tape (Stop / Play) and Rewind; AY card; Volume (Mute / 33% /
+  66% / 100%); Beeper (Mute / On); CPU waits (Off / On: On is the real
+  machine's speed, with the video controller's stalls; Off is about a
+  third faster); Joysticks (Normal / Swapped); write protection for
+  the two floppies and the hard disk.
+- **About**, **Debug** (what the memory gave the CPU - for when it does
+  not start, `.claude/docs/build.md`).
 - **Save settings** - writes `/pk8000.ini` on the card; loaded at power-up.
 
 ## 4. If it does not start

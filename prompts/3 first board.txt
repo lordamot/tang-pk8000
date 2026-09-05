@@ -186,3 +186,20 @@ Done:
 Claims: linted, simulated to the prompt against a model that now enforces the one rule the board broke, and timed.  Not run on a board.
 
 Next: FPGA only - replug the Tang, make flash-fpga, power-cycle.  Expect the cyan border for ~100 ms, then the BASIC banner.  If it still restarts, F12, Debug, and read me the lines again.
+
+all works now! add keyboard layout table in docs. redo hardware menu a bit - it should allow on/off each expansion instead of selecting one of them.
+
+****
+
+Recorded: the fourth flash boots (progress.md "The fourth flash", guideline.md, CLAUDE.md, memory).  Then the two changes, both built and neither on the board yet.
+
+Keyboard table.  howto.md section 2 is now the whole layout, ПК8000 key against PC key, row by row of the matrix from mnano/pk8000.h - digits, punctuation (: is ', ^ is =, _ is F6, @ is `), letters, РГ/УПР/ГРФ/АЛФ/ФИКС (Shift, Ctrl, left Alt or F10, right Alt or F9, Caps Lock or F8), F1-F5, СТОП (F7, Pause), ЗБ, СЕЛ (F11), ВВОД, СТРН/ВСТ/УДЛ (keypad - * /), the cursor keys, and row 9's home/end/page/МЕНЮ keys on the keypad and Home/End/PgUp/PgDn - plus what the keys type as measured in simulation (a digit key alone is its symbol, Shift gives the digit; / alone is ?; Shift+; is +).  mcu.md's keyboard paragraph points to it and no longer says the digit row is unknown.
+
+Expansion switches.  The Hardware form has Floppy, IDE and ROM disk as three Off|On switches (letters f, i, r; the ROM disk's file entry is now "ROM file"), replacing the one Expansion choice 'x'.  The three devices share expansion page 1 (16 KB), so when more than one is on the first in that order owns the page; the others keep their I/O ports (the IDE's 50h-53h, the ROM disk's 77h) and have no ROM window.  The BASIC ROM probes page 1, then page 2, for a boot header, so a second device could live in page 2 if its ROM runs there - listed in progress.md as item 8, not built.
+- sysctrl.v: system_fdd/ide/rdk; top.v: exp_fdc = f, exp_ide = i and not f, exp_rom = r and neither; the IDE's ports are enabled by i alone.
+- menu.c, menu_test.c (15 entries, the paging numbers, the letters), tb_top.v (+EXP=n as before; +EXP_FDD/+EXP_IDE/+EXP_ROM for combinations).
+- Lint clean.  Host menu test 20 screens 0 errors.  make fw: bin/bl616.bin 11:22.  Bitstream 0 violations, clk30 71.7 MHz, Logic 33% BSRAM 28/46: bin/tang.fs 11:23.
+- Sim: IDE boot from soft/cf.img through the new letter reaches P/M 2.2's ">" at 3.8 s, 504292 SDRAM checks 0 wrong, 0 refused ACTIVEs.
+- Docs: howto.md (also its menu section and stale "no tape, no floppy"), mcu.md, platform.md, fpga.md, build.md, README (ru/en), CLAUDE.md.
+
+Claims: built, linted, simulated, timed.  Not on the board.  Both binaries need flashing (BL616 first, boot mode; then replug, make flash-fpga, power-cycle).  An old /pk8000.ini on the card still carries 'x'; the firmware ignores a letter it does not know, and Save settings writes the new ones.  Nothing committed - your "fixed start" commit is the base.

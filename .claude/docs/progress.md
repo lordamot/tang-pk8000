@@ -1,19 +1,18 @@
 # State of the port
 
-Last updated: 5 September 2026 (morning), v0.2.0 alpha, the second day.
+Last updated: 5 September 2026 (midday), v0.2.0 alpha, the second day.
 
 ## What there is
 
-Built, linted, simulated, timed - and, on the evening of 4 Sep 2026,
-**flashed three times**: no bitstream has booted (below, "The first
-board", "The second flash", "The third flash").  Nothing of this
-design has yet run on hardware past the ROM's RAM test.  The third
-flash's Debug page, read on the morning of 5 Sep, named the fault: the
-SDRAM controller never precharged (defect 16, its column word had no
-A10), the simulation model had not minded, and the chip aliased all
-64 KB into one row.  Fixed, reproduced in simulation, rebuilt; the
-fourth bitstream waits to be flashed ("The Debug page read", below).
-On UKNC Nano's framework:
+Built, linted, simulated, timed - and **running on a board since the
+fourth flash, 5 Sep 2026 about 11:10** ("all works now!").  The three
+flashes of 4 Sep did not boot: the SDRAM controller never precharged
+(defect 16, its column word had no A10), the simulation model had not
+minded, and the chip aliased all 64 KB into one row; the third flash's
+Debug page named it and the fourth carried the fix (below, "The first
+board" through "The fourth flash").  Everything built after 11:01 is
+untested on the board until this file says otherwise.  On UKNC Nano's
+framework:
 
 - the КР580ВМ80А (vm80a) at 2.5 MHz on a 30 MHz clock, the SDRAM on a
   fixed timetable, the BASIC 1.2 ROM, the bank register;
@@ -26,8 +25,9 @@ On UKNC Nano's framework:
   the НГМД (MiSTer's wd1793 with the controller's ROM) with two drives
   from `.fdd` images; the community IDE/CF adapter with its ROM and an
   `.img`; the ROM disk cartridge copied into the SDRAM; the AY card at
-  14h/15h; one owner at a time on the SD path (`sd_arbiter.v`); the
-  expansion page as a menu choice;
+  14h/15h; one owner at a time on the SD path (`sd_arbiter.v`); each
+  expansion device on its own menu switch, the first on owning page 1
+  (5 Sep; until then one choice of the three);
 - the firmware: core id 7, the keymap, the image slots and the switches
   in the menu, settings on the card, "Run .bas" (a text program
   tokenised and poked into the RAM through `poke.v`);
@@ -37,7 +37,8 @@ On UKNC Nano's framework:
 
 ```
 Logic 30%   Register 17%   BSRAM 25/46 (55%)   PLL 2/2   clk30 70.3 MHz   0 violations   [4 Sep 2026, v0.2.0 + poke.v]
-Logic 33%   Register 18%   BSRAM 28/46 (61%)   PLL 2/2   clk30 65.8 MHz   0 violations   [5 Sep 2026, v0.2.0 + memcheck.v + A10 - the fourth bitstream]
+Logic 33%   Register 18%   BSRAM 28/46 (61%)   PLL 2/2   clk30 71.7 MHz   0 violations   [5 Sep 2026 11:23, three expansion switches - not yet on a board]
+Logic 33%   Register 18%   BSRAM 28/46 (61%)   PLL 2/2   clk30 65.8 MHz   0 violations   [5 Sep 2026 11:01, v0.2.0 + memcheck.v + A10 - the fourth flash, boots]
 Logic 33%   Register 18%   BSRAM 28/46 (61%)   PLL 2/2   clk30 55.4 MHz   0 violations   [4 Sep 2026 night, v0.2.0 + memcheck.v]
 Logic 29%   Register 17%   BSRAM 25/46 (55%)   PLL 2/2   clk30 62.8 MHz   0 violations   [4 Sep 2026, v0.2.0]
 Logic 17%   Register 10%   BSRAM 11/46 (24%)   PLL 2/2   clk30 66.6 MHz   0 violations   [4 Sep 2026, v0.1.0]
@@ -221,7 +222,25 @@ Done about it (5 Sep, morning):
   and 2 fetches at 0000h (the normal two), the BASIC banner and "Ok"
   in the frame at 2.45 s.
 - Rebuilt: Logic 33%, Register 18%, BSRAM 28/46, 0 violations, the gate
-  green, `bin/tang.fs` replaced 5 Sep 11:01 (clk30 65.8 MHz).  **Not yet flashed.**
+  green, `bin/tang.fs` replaced 5 Sep 11:01 (clk30 65.8 MHz).
+
+### The fourth flash, about 11:10
+
+The operator flashed the FPGA (`make flash-fpga`, the firmware of
+10:21 already in) and reported: **"all works now!"**  BASIC's banner on
+a board for the first time, a day and four flashes after the start.
+No numbers were read from the Debug page this time; what "all" covers
+beyond booting into BASIC - the keyboard, the tape, the disks over the
+real card, the sound - is not measured and this file does not claim
+it.
+
+Built after that, the same day, and **not on a board yet**: the
+three expansion switches (f, i, r) in `sysctrl.v`, `top.v`, `menu.c`
+and the testbench replace the one 'x' choice - bitstream 11:23, 0
+violations, clk30 71.7 MHz; firmware 11:22, the host menu test 20
+screens 0 errors.  Both binaries in `bin/` are these.  Simulated: the
+IDE boot from `soft/cf.img` through the new letter (the run's result
+is in "What the simulation showed", below).
   Firmware unchanged from 10:21.
 
 ## What the simulation showed on 4 September 2026
@@ -261,7 +280,9 @@ makes about 15 ms of machine time a second.
   prints "IDE BIOS ПК8000 1.5 / Test ROM ... ok. / Reset...", identifies
   the drive, reads 15 sectors through the arbiter and boots the card's
   P/M 2.2 shell to its ">" prompt by 3.7 s, in green on black in a
-  different screen bank.  That is the ВВ55-to-ATA path, the LBA read
+  different screen bank.  Rerun 5 Sep midday through the new switch
+  letter (`+EXP=2` sets `i`): the same ">" at 3.8 s, 504292 SDRAM
+  checks 0 wrong, 0 refused ACTIVEs.  That is the ВВ55-to-ATA path, the LBA read
   command, 8/16-bit data and the ROM decode all exercised by the
   software the community actually uses.
 - **Floppy**: `+EXP=1 +FDDA=blank.fdd` (819200 zero bytes).  The НГМД
@@ -382,8 +403,8 @@ implement them, `make bas-test` checks the two agree.
     stopped, said "Device I/O error" with the program already in memory.
     Sixteen zeros now.
 
-16. **Fixed in the tree, not yet on a board** (found 4 Sep 2026, first
-    board; cause found 5 Sep) - the machine does not boot on the board:
+16. **Fixed** (found 4 Sep 2026, first board; cause found 5 Sep; the
+    fourth flash boots) - the machine did not boot on the board:
     the ROM's zero-fill RAM test passes and the code after it, through
     the stack, restarts the ROM (white border blinking cyan).  The
     self-test of 22:50 passed, so not the capture clock; the Debug page
@@ -393,8 +414,8 @@ implement them, `make bas-test` checks the two agree.
     row open, the 64 KB one row on the chip - and the model let it
     pass.  A10 set; the model refuses the illegal ACTIVE and counts it;
     the unfixed design against the strict model reproduces the board's
-    page exactly.  Rebuilt 5 Sep 11:01, waiting for the fourth flash.
-    See "The Debug page read" above.
+    page exactly.  Rebuilt 5 Sep 11:01, flashed about 11:10: boots.
+    See "The Debug page read" and "The fourth flash" above.
 17. **Fixed** (5 Sep 2026) - the OSD's Debug entry opened the About
     text: menu.c compared the 'T' entry's label with `strcmp`, and
     `menu_get_str` returns the rest of the form string, not the label
@@ -423,6 +444,12 @@ implement them, `make bas-test` checks the two agree.
    row proved the pads and passed over defect 16.  Write a byte in one
    row, access another row, read the first back - and a refresh-length
    wait, to see retention - before the CPU is released.
+8. **The second expansion slot (page 2, CSX2/)** for a second device
+   with a ROM: the BASIC ROM probes page 2 for a boot header after page
+   1, so a floppy in page 1 and the IDE adapter in page 2 would boot
+   whichever has media - if the device ROMs run from page 2, which
+   only a run can say.  Today a second device that is on has its
+   ports and no ROM.
 
 ## Open questions
 

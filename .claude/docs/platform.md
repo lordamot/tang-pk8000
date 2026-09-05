@@ -279,7 +279,9 @@ OSD's "AY card: Off" takes it off the bus.
 ## Expansion page 1
 
 The bank register's page 1 is the expansion slot (CSX1/ on the
-schematic), and the OSD's "Expansion" says what is in it:
+schematic).  Each of the three devices below has its own OSD switch
+(Floppy, IDE, ROM disk - letters f, i, r); what is in the page is the
+first of them that is on, in that order:
 
 - **Floppy** - the Сура НГМД: a КР1818ВГ93 (WD1793) with
   `tang/rom/pk8000_fdc.rom` (8 KB) at 0000h-1FFFh of every quarter that
@@ -318,8 +320,14 @@ schematic), and the OSD's "Expansion" says what is in it:
 
 Page 2 (CSX2/) has nothing and reads 0FFh.  Writes to any page go to
 the RAM under it.  Only one thing can be in page 1 at a time - Emu80's
-configurations are exclusive the same way - so the floppy and the hard
-disk are not both available in one session.
+configurations are exclusive the same way - so with two switches on
+the second device has its ports (the IDE's 50h-53h, the ROM disk's 77h)
+and no ROM: a floppy and a CF together give a machine that boots the
+floppy and can reach the CF only through a driver of its own.  The
+ROM's boot probe (24C6h, called from 298Dh) looks for an "AB" header
+at 4000h with quarter 1 on page 1, then on page 2, then in RAM, so the
+second slot is where a second ROM would go if its code can run there;
+not built (`progress.md`).
 
 ## The printer
 

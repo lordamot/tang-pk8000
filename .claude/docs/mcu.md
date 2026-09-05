@@ -31,40 +31,45 @@ matrix lives there.  No row tracking, no pacing: the ПК8000 keyboard is
 a plain matrix and the ROM scans it, so two keys down in one row are
 simply two bits.
 
-The mapping is by key position, `.claude/docs/platform.md` has the
-matrix.  Unshifted letters are lower case (ФИКС/Caps Lock for
-capitals; BASIC takes either).  What the digit row types with and
-without Shift is NOT pinned down yet: three simulation runs of the
-typing test gave three answers (`.claude/docs/progress.md`), because
-the ROM debounces across its once-a-frame scans and the test's key
-timing was not yet aligned to that.  Emu80's "smart" layout inverts
-Shift for the digit row, which suggests the machine types symbols
-unshifted; settle it on a board or with a scan-aligned test before
-building the firmware layer that would turn it round.  Choices worth
-knowing: `=` is the `^` key, `'` is `:`,
-`` ` `` is `@`, F6 is `_`, F7 and Pause are СТОП, F8 ФИКС, F9 АЛФ
-(Cyrillic/Latin), F10 ГРФ, F11 СЕЛ, right Alt АЛФ, left Alt ГРФ; the
-keypad's 7/3/5/4/6 are row 9's cursor-home keys, `*` and `/` are ВСТ
-and УДЛ, `-` is СТРН.
+The mapping is by key position; `howto.md`, "The keyboard", is the
+whole table, ПК8000 key against PC key, and `.claude/docs/platform.md`
+has the matrix.  Unshifted letters are lower case (ФИКС/Caps Lock for
+capitals; BASIC takes either).  The digit row, measured in simulation
+with the matrix polarity right (`platform.md`, "Keyboard"): a digit
+key alone types its symbol, Shift gives the digit, `/` alone is `?`,
+Shift+`;` is `+` - the other way round from a PC, which is what
+Emu80's "smart" layout turns round and the firmware does not yet
+(`progress.md`, what is not built).  Choices worth knowing: `=` is the
+`^` key, `'` is `:`, `` ` `` is `@`, F6 is `_`, F7 and Pause are СТОП,
+F8 ФИКС, F9 АЛФ (Cyrillic/Latin), F10 ГРФ, F11 СЕЛ, right Alt АЛФ,
+left Alt ГРФ; the keypad's 7/3/5/4/6 are row 9's cursor-home keys, `*`
+and `/` are ВСТ and УДЛ, `-` is СТРН.
 
 ## The menu
 
 ```
 PK8000 Nano                  Hardware
-  Tape:        <file>          Expansion:  None|Floppy|IDE|ROM disk  (x)
-  Floppy A:    <file>          ROM disk:   <file>
-  Floppy B:    <file>          Tape:       Stop|Play                  (T)
-  Hard disk:   <file>          Rewind tape                            (e, a button)
-  Run .bas:    <file>          AY card:    Off|On                     (y)
-  Reset               (R)
-  Hardware  >                  Volume:     Mute|33%|66%|100%          (A)
-  About     >                  Beeper:     Mute|On                    (b)
-  Debug     >                  CPU waits:  Off|On                     (w)
-  Save settings                Joysticks:  Normal|Swapped             (j)
+  Tape:        <file>          Floppy:     Off|On                     (f)
+  Floppy A:    <file>          IDE:        Off|On                     (i)
+  Floppy B:    <file>          ROM disk:   Off|On                     (r)
+  Hard disk:   <file>          ROM file:   <file>
+  Run .bas:    <file>          Tape:       Stop|Play                  (T)
+  Reset               (R)      Rewind tape                            (e, a button)
+  Hardware  >                  AY card:    Off|On                     (y)
+  About     >                  Volume:     Mute|33%|66%|100%          (A)
+  Debug     >                  Beeper:     Mute|On                    (b)
+  Save settings                CPU waits:  Off|On                     (w)
+                               Joysticks:  Normal|Swapped             (j)
                                Floppy A prot.: Off|On                 (p)
                                Floppy B prot.: Off|On                 (q)
                                HDD prot.:  Off|On                     (K)
 ```
+
+The three expansion switches are independent (until 5 Sep 2026 one
+'x' chose one of them): each device is in or out on its own, and
+`top.v` gives expansion page 1 to the first that is on, in the order
+floppy, IDE, ROM disk - the others keep their I/O ports and have no ROM
+window (`platform.md`, "Expansion page 1").
 
 The file entries are `sdc_image_open` slots: 0 tape (`.cas`), 1 and 2
 floppies (`.fdd`), 3 hard disk (`.img`, `.hdd`), 4 ROM disk (`.bin`,
@@ -84,7 +89,7 @@ the letter in the form string, an entry in `variables_pk8000[]` (the
 default), and a case in `sysctrl.v`.  A button other than Reset and
 Save sends its letter as 1 then 0 and leaves the OSD open.  "Save
 settings" writes `/pk8000.ini` on the card; at start every variable is
-sent once (A b w j x T y p q K, then R 3 and R 0).  The Hardware form
+sent once (A b w j f i r T y p q K, then R 3 and R 0).  The Hardware form
 scrolls; its return to the main form is by form number.  The version
 at the right of the main form's caption is the first line of
 `VERSION`, read by `CMakeLists.txt` into `CORE_VERSION`.
