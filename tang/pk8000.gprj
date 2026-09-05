@@ -12,6 +12,7 @@
         <File path="src/pk8000/cpu8080.v" type="file.verilog" enable="1"/>
         <File path="src/pk8000/waits_rom.v" type="file.verilog" enable="1"/>
         <File path="src/pk8000/sdram.v" type="file.verilog" enable="1"/>
+        <File path="src/pk8000/memcheck.v" type="file.verilog" enable="1"/>
         <File path="src/pk8000/pk8000_rom.v" type="file.verilog" enable="1"/>
         <File path="src/pk8000/ports.v" type="file.verilog" enable="1"/>
         <File path="src/pk8000/video.v" type="file.verilog" enable="1"/>

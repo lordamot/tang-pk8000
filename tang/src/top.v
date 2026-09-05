@@ -292,6 +292,7 @@ hdd_rom hddrom (
 wire        vid_req, vid_ack;
 wire [15:0] vid_adr;
 wire [7:0]  vid_rdata;
+wire        bist_done, bist_fail, cap_late;   // the SDRAM's self-test (sdram.v)
 
 // The SDRAM's CPU port: the machine's RAM reads and writes, a read of
 // the ROM disk (page 1 with 'x' = 3, at the address romdisk.v gives),
@@ -345,6 +346,9 @@ sdram mem (
     .vid_adr   ({6'd0, vid_adr}),
     .vid_rdata (vid_rdata  ),
     .vid_ack   (vid_ack    ),
+    .bist_done (bist_done  ),
+    .bist_fail (bist_fail  ),
+    .cap_late  (cap_late   ),
     .SDRAM_A   (O_sdram_addr     ),
     .SDRAM_BA  (O_sdram_ba       ),
     .SDRAM_DQ  (IO_sdram_dq[15:0]),
@@ -510,7 +514,35 @@ sysctrl sctl1 (
     .system_hdd_wprot(system_hdd_wprot),
     .poke_stb      (poke_stb      ),
     .poke_adr      (poke_adr      ),
-    .poke_data     (poke_data     )
+    .poke_data     (poke_data     ),
+    .dbg           (dbg_bus       )
+);
+
+// The debug window the MCU reads through sysctrl's CMD 7: a shadow of
+// F000h-FFFFh checked against every read, and what the CPU is doing
+// (memcheck.v; the OSD's "Debug" page).  It listens and touches nothing.
+wire [255:0] dbg_bus;
+memcheck mchk (
+    .clk       (clk        ),
+    .tphase    (tphase     ),
+    .req       (ram_req    ),
+    .we        (ram_we     ),
+    .adr       (ram_adr    ),
+    .wdata     (ram_wdata  ),
+    .rdata     (ram_rdata  ),
+    .hold      (rd_loading ),
+    .cpu_rst   (cpu_rst    ),
+    .mem_rd    (mem_rd     ),
+    .cyc_m1    (cpu_m1     ),
+    .cpu_adr   (cpu_adr    ),
+    .io_wr     (io_wr      ),
+    .io_data   (cpu_d_now  ),
+    .por_done  (por_done   ),
+    .init      (init       ),
+    .bist_done (bist_done  ),
+    .bist_fail (bist_fail  ),
+    .cap_late  (cap_late   ),
+    .dbg       (dbg_bus    )
 );
 
 hid hd1 (
@@ -859,12 +891,16 @@ i2s_tx i2s (
 );
 
 //------------------------------------------------------------------------
-// LEDs, active low on the board
+// LEDs, active low on the board.  With nothing mounted and the machine
+// just up, 2 and 3 are the SDRAM self-test's verdict: 3 lit is "the
+// memory failed both captures", 2 lit is "the memory answered on slot
+// clock 4, not 3" (sdram.v's header) - the tape and the disks share
+// them once the machine is running.
 //------------------------------------------------------------------------
 assign leds[0] = ~por_done;
 assign leds[1] = ~beeper;
-assign leds[2] = ~tape_running;
-assign leds[3] = ~(fdc_busy | sd_rbusy);
+assign leds[2] = ~(tape_running | cap_late);
+assign leds[3] = ~(fdc_busy | sd_rbusy | bist_fail);
 assign leds[4] = ~cpu_rst;
 assign leds[5] = ~init;
 

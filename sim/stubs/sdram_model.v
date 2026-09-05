@@ -12,6 +12,16 @@
 // punish will pass here silently.  Do not use it to prove the controller
 // is correct - use it to run the processors.
 //
+// One protocol rule it does enforce (5 Sep 2026): an ACTIVE to a bank
+// whose row is still open is refused - the old row stays open, the event
+// is counted and reported at the end ("ACTIVEs on a bank with a row
+// still open", must be 0), and a READ or WRITE with A[10] set closes its
+// row (auto-precharge), which the model had ignored along with everything
+// else about rows.  Until then it silently opened the new row on every
+// ACTIVE, and a controller that never precharged (pk8000's sdram.v with
+// its A10 bit on A8) booted BASIC here and aliased all 64 KB into one
+// row on the board.  See CMD_ACTIVE below.
+//
 // What sdram2.v actually issues, read out of its state machine:
 //   ACTIVE with the row on A, then READ or WRITE with A[10] set
 //   (auto-precharge) and the column in A[7:0].  CAS latency 2, read
@@ -55,6 +65,7 @@ module sdram_model #(
 
     reg [ROW_BITS-1:0] open_row [0:BANKS-1];
     reg                row_open [0:BANKS-1];
+    integer            open_bank_acts = 0;   // ACTIVEs refused, see CMD_ACTIVE
 
     // Read pipeline: CAS latency stages, then BURST words out.
     reg [15:0]         rd_pipe   [0:CAS];
@@ -124,8 +135,23 @@ module sdram_model #(
 
         case (cmd)
             CMD_ACTIVE: begin
-                open_row[ba] <= a;
-                row_open[ba] <= 1'b1;
+                // An ACTIVE to a bank whose row is still open is illegal
+                // on the part, and what a real one does is not specified.
+                // This model keeps the OLD row, which is what the board
+                // looked like on 5 Sep 2026 when sdram.v's column word had
+                // its 1 on A8 instead of A10 and nothing ever precharged:
+                // every row's traffic landed in one row, zeros read back
+                // as zeros and the stack came back zeroed by the ROM's
+                // fill of other rows.  Counted, and the first few said.
+                if (row_open[ba]) begin
+                    open_bank_acts <= open_bank_acts + 1;
+                    if (open_bank_acts < 4)
+                        $display("[sdram] %0t ACTIVE on bank %0d row %0h with row %0h still open - no precharge; the old row stays",
+                                 $time, ba, a, open_row[ba]);
+                end else begin
+                    open_row[ba] <= a;
+                    row_open[ba] <= 1'b1;
+                end
             end
 
             CMD_PRECHARGE: begin
@@ -143,6 +169,7 @@ module sdram_model #(
                              mem[flat(ba, open_row[ba], a[COL_BITS-1:0])]);
                 rd_pipe[0]  <= mem[flat(ba, open_row[ba], a[COL_BITS-1:0])];
                 rd_valid[0] <= 1'b1;
+                if (a[10]) row_open[ba] <= 1'b0;   // auto-precharge: the row closes (open_row stays for the burst)
                 burst_bank  <= ba;
                 burst_col   <= (a[COL_BITS-1:0] & ~(BURST-1)) |
                                ((a[COL_BITS-1:0] + 1) & (BURST-1));
@@ -159,6 +186,7 @@ module sdram_model #(
                              dq, dqm_h, dqm_l);
                 if (!dqm_l) mem[flat(ba, open_row[ba], a[COL_BITS-1:0])][ 7:0] <= dq[ 7:0];
                 if (!dqm_h) mem[flat(ba, open_row[ba], a[COL_BITS-1:0])][15:8] <= dq[15:8];
+                if (a[10]) row_open[ba] <= 1'b0;   // auto-precharge
                 burst_left <= 0;   // NO_WRITE_BURST
             end
 
@@ -177,8 +205,15 @@ module sdram_model #(
     // the machine sat in a trap loop for ever.  With CL=2 the controller
     // samples at the second edge after the command, so the word has to be
     // on the bus from the first.
+    // +SDRAM_LATE drives from stage CAS instead - the word a clock later
+    // than the arithmetic in sdram.v expects, to exercise the controller's
+    // self-test and its move to the later capture (4 Sep 2026).
+    reg late = 1'b0;
+    initial late = $test$plusargs("SDRAM_LATE");
     always @(*) begin
-        dq_oe  = rd_valid[CAS-1];
-        dq_out = rd_pipe[CAS-1];
+        dq_oe  = late ? rd_valid[CAS] : rd_valid[CAS-1];
+        dq_out = late ? rd_pipe[CAS]  : rd_pipe[CAS-1];
     end
+    final $display("[sdram] ACTIVEs on a bank with a row still open: %0d (must be 0)", open_bank_acts);
+
 endmodule

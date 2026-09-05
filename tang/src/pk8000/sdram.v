@@ -47,6 +47,28 @@
 // command, and two AUTO REFRESHes between the precharge and the mode
 // load.  65536 clocks of NOP after PLL lock (2.2 ms), then the steps,
 // one a slot.  `init` says the memory exists; nothing may run before.
+//
+// The self-test (4 Sep 2026, after the first board).  The first
+// bitstream on a board showed the ROM's RAM test passing - it writes
+// and reads zeros - and the code after it, which puts non-zero bytes
+// through the stack, failing back to 0000h: the picture simulation
+// defect 2 had, when the read was captured on the wrong slot clock.
+// The clock the word is on the bus is a property of the chip and of the
+// pad delays the tool does not analyse, so after `init`, while the CPU
+// is still held in reset, this controller writes four non-zero bytes to
+// 0FFF0h-0FFF3h through the CPU slot and reads them back.  If they do
+// not come back it moves the capture to slot clock 4 (`cap_late`) and
+// tries again; if that fails too `bist_fail` goes up and the capture
+// goes back to clock 3.  top.v puts both on the LEDs.  The read-back
+// order is the write order, so a bus that echoes the last write does not
+// pass.  In simulation the model is on time: done, no fail, not late.
+// What the self-test proves is the pads and the capture clock - four
+// bytes in one row, nothing else touching the chip.  It passed on the
+// board (second flash) while the column word below had no A10 and
+// nothing precharged; the Debug page of the third flash said which
+// bytes came back wrong, and that was the row handling, not the pads.
+// A self-test that spans two rows with a third row's access between
+// the write and the read would have caught it; this one does not.
 //========================================================================
 module sdram (
     input             clk,
@@ -67,6 +89,11 @@ module sdram (
     input      [21:0] vid_adr,
     output reg [7:0]  vid_rdata,
     output reg        vid_ack,      // one clock, with vid_rdata
+
+    // the self-test's verdict (see the header)
+    output reg        bist_done,
+    output reg        bist_fail,
+    output reg        cap_late,     // reads captured on slot clock 4, not 3
 
     // the chip
     output reg [10:0] SDRAM_A,
@@ -123,6 +150,26 @@ reg  [7:0] ref_cnt = 8'd0;
 reg  [2:0] ref_due = 3'd0;
 
 //------------------------------------------------------------------------
+// The self-test: eight accesses through the CPU slot, one a T-state,
+// advanced at phase 1 when the read data of the T-state before is in
+// cpu_rdata whichever clock captured it.  The CPU is in reset for
+// 280 ms after init (top.v's por_done), so its port is free.
+//------------------------------------------------------------------------
+reg         bist_run  = 1'b0;     // the test is running
+reg         bist_rd   = 1'b0;     // 0 the write pass, 1 the read pass
+reg  [1:0]  bist_i    = 2'd0;
+reg         bist_bad  = 1'b0;     // a mismatch in this read pass
+wire        bist_req  = bist_run;
+wire [21:0] bist_adr  = {6'd0, 14'h3FFC, bist_i};       // 0FFF0h..0FFF3h
+reg  [7:0]  bist_pat;
+always @(*) case (bist_i)
+    2'd0: bist_pat = 8'h55;
+    2'd1: bist_pat = 8'hAA;
+    2'd2: bist_pat = 8'h5A;
+    2'd3: bist_pat = 8'hA5;
+endcase
+
+//------------------------------------------------------------------------
 // The cycle in flight
 //------------------------------------------------------------------------
 reg         act      = 1'b0;      // this slot has a request
@@ -145,6 +192,8 @@ always @(posedge clk) begin
         cmd     <= CMD_INHIBIT;
         ref_due <= 3'd0;
         ref_cnt <= 8'd0;
+        bist_run  <= 1'b0;  bist_rd  <= 1'b0; bist_i   <= 2'd0; bist_bad <= 1'b0;
+        bist_done <= 1'b0;  bist_fail <= 1'b0; cap_late <= 1'b0;
     end else if (!started) begin
         // 2.2 ms of clock before the first command
         if (&settle) begin started <= 1'b1; istep <= 5'd31; end
@@ -167,6 +216,31 @@ always @(posedge clk) begin
         //----------------------------------------------------------------
         // Running.
         //----------------------------------------------------------------
+        // the self-test: started once, at a phase 1 so that its first
+        // request is taken at the phase 7 after it and its first tick,
+        // at the next phase 1, follows that access
+        if (!bist_done && !bist_run && tphase == 4'd1) bist_run <= 1'b1;
+        if (bist_run && tphase == 4'd1) begin
+            if (bist_rd && cpu_rdata != bist_pat) bist_bad <= 1'b1;
+            bist_i <= bist_i + 2'd1;
+            if (bist_i == 2'd3) begin
+                if (!bist_rd)
+                    bist_rd <= 1'b1;
+                else begin
+                    bist_rd <= 1'b0;
+                    bist_bad <= 1'b0;
+                    if (!(bist_bad || cpu_rdata != bist_pat)) begin
+                        bist_run <= 1'b0; bist_done <= 1'b1;        // pass, keep cap_late
+                    end else if (!cap_late) begin
+                        cap_late <= 1'b1;                          // try the other clock
+                    end else begin
+                        bist_run <= 1'b0; bist_done <= 1'b1;
+                        bist_fail <= 1'b1; cap_late <= 1'b0;
+                    end
+                end
+            end
+        end
+
         if (ref_cnt == 8'd233) begin
             ref_cnt <= 8'd0;
             if (ref_due != 3'd7) ref_due <= ref_due + 3'd1;
@@ -187,6 +261,15 @@ always @(posedge clk) begin
                 cmd      <= CMD_ACTIVE;
                 SDRAM_BA <= cpu_adr[21:20];
                 SDRAM_A  <= cpu_adr[19:9];
+            end else if (cpu_slot && bist_req) begin
+                act      <= 1'b1;
+                act_we   <= ~bist_rd;
+                act_vid  <= 1'b0;
+                act_adr  <= bist_adr;
+                act_data <= bist_pat;
+                cmd      <= CMD_ACTIVE;
+                SDRAM_BA <= bist_adr[21:20];
+                SDRAM_A  <= bist_adr[19:9];
             end else if (!cpu_slot && vid_req) begin
                 act      <= 1'b1;
                 act_we   <= 1'b0;
@@ -201,8 +284,17 @@ always @(posedge clk) begin
             end
         end
         3'd1: if (act) begin
-            // column with auto-precharge; the byte lane by DQM
-            SDRAM_A  <= {2'b0, 1'b1, act_adr[8:1]};
+            // column with auto-precharge - A10 SET; the byte lane by DQM.
+            // Until 5 Sep 2026 this was {2'b0, 1'b1, col}: UKNC Nano's
+            // {5'b00100, col} on a 13-bit bus, repacked into 11 bits with
+            // the 1 landing on A8.  Nothing precharged, every ACTIVE hit a
+            // bank with a row still open, and on the board all 64 KB
+            // aliased into one row: zeros read back, the stack came back
+            // zeroed by the ROM's fills (progress.md, "The third flash").
+            // The model refuses such an ACTIVE now and counts them - and
+            // caught the first fix, {2'b01, 1'b0, col}, which put the 1 on
+            // A9.  Bit 10 is the top of this 11-bit vector: write it so.
+            SDRAM_A  <= {1'b1, 2'b00, act_adr[8:1]};   // A10=1, A9=A8=0, A[7:0]=column
             SDRAM_BA <= act_adr[21:20];
             if (act_we) begin
                 cmd        <= CMD_WRITE;
@@ -219,7 +311,16 @@ always @(posedge clk) begin
         3'd2: if (act && act_we) begin
             dq_oe <= 1'b1;             // hold the data a clock past the command
         end
-        3'd3: if (act && !act_we) begin
+        // the capture: slot clock 3 by the arithmetic in the header, or
+        // clock 4 if the self-test found the word there instead
+        3'd3: if (act && !act_we && !cap_late) begin
+            if (act_vid) begin
+                vid_rdata <= act_adr[0] ? SDRAM_DQ[15:8] : SDRAM_DQ[7:0];
+                vid_ack   <= 1'b1;
+            end else
+                cpu_rdata <= act_adr[0] ? SDRAM_DQ[15:8] : SDRAM_DQ[7:0];
+        end
+        3'd4: if (act && !act_we && cap_late) begin
             if (act_vid) begin
                 vid_rdata <= act_adr[0] ? SDRAM_DQ[15:8] : SDRAM_DQ[7:0];
                 vid_ack   <= 1'b1;

@@ -59,8 +59,8 @@ PK8000 Nano                  Hardware
   Reset               (R)
   Hardware  >                  Volume:     Mute|33%|66%|100%          (A)
   About     >                  Beeper:     Mute|On                    (b)
-  Save settings                CPU waits:  Off|On                     (w)
-                               Joysticks:  Normal|Swapped             (j)
+  Debug     >                  CPU waits:  Off|On                     (w)
+  Save settings                Joysticks:  Normal|Swapped             (j)
                                Floppy A prot.: Off|On                 (p)
                                Floppy B prot.: Off|On                 (q)
                                HDD prot.:  Off|On                     (K)
@@ -93,6 +93,17 @@ at the right of the main form's caption is the first line of
 OSD's width; its Cyrillic needs glyphs the u8g2 checkout lacks, so
 `font_helvR08_te.c` was regenerated with the Cyrillic block added
 (from u8g2's 6x10.bdf), ASCII unchanged.
+
+"Debug" is a page of text too, built when it is opened
+(`menu_debug_open`; the dispatch tells the two 'T' entries apart by
+their label, which `menu_get_str` gives as the REST of the form string
+- "Debug,;..." - so it is a prefix compare up to the comma, and
+`strcmp` made every 'T' entry the About page on the third flash): `sys_get_debug` (sysctrl.c) reads 32 bytes from
+the core through the SYS target's command 7 - an offset, then bytes,
+eight a transaction, the core answering one strobe behind as in CMD 0 -
+and formats them.  The bytes are `memcheck.v`'s (`build.md`, "Reading
+the board", has the lines and what they mean); the host test stubs the
+read with zeros.
 
 `make menu-test` walks all of this on the host (`menu_test.c`) and
 leaves each screen under `build/menu/` as text and PNG.  It is the only

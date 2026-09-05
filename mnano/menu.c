@@ -103,6 +103,7 @@ static const char main_form_pk8000[] =
   "B,Reset,R;"                          // system reset
   "S,Hardware,1;"                       // Hardware submenu is form 1
   "T,About,;"                           // the about_pk8000 text
+  "T,Debug,;"                           // the debug window (menu_debug_open)
   "B,Save settings,S;";
 
 // 12 entries: the form scrolls (menu_entry_go keeps four rows in view)
@@ -1144,6 +1145,32 @@ static void menu_text_wrap(menu_t *menu, const char *para) {
   if(len) menu_text_add(menu, line);
 }
 
+// The "Debug" page: 32 bytes from the core's memcheck.v (sysctrl.v's
+// CMD 7), formatted here.  The byte map is memcheck.v's `dbg`.
+static void menu_text_open(menu_t *menu, const char *title, const char **paras);
+static void menu_debug_open(menu_t *menu, const char *title) {
+  static unsigned char d[32];
+  static char line[8][40];
+  static const char *paras[9];
+  sys_get_debug(menu->osd->spi, d, sizeof(d));
+  unsigned f = d[0];
+  snprintf(line[0], sizeof(line[0]), "por %d init %d rst %d bist %d fail %d late %d",
+           (f>>7)&1, (f>>6)&1, (f>>5)&1, (f>>4)&1, (f>>3)&1, (f>>2)&1);
+  snprintf(line[1], sizeof(line[1]), "F000-FFFF: %u rd %u wr %u bad",
+           d[19] | d[20]<<8, d[21] | d[22]<<8, d[2]);
+  snprintf(line[2], sizeof(line[2]), "1st %02X%02X exp %02X got %02X pc %02X%02X",
+           d[4], d[3], d[5], d[6], d[8], d[7]);
+  snprintf(line[3], sizeof(line[3]), "last %02X%02X exp %02X got %02X pc %02X%02X",
+           d[10], d[9], d[11], d[12], d[14], d[13]);
+  snprintf(line[4], sizeof(line[4]), "cpu resets %u, M1 at 0000: %u", d[15], d[16]);
+  snprintf(line[5], sizeof(line[5]), "  last from %02X%02X", d[18], d[17]);
+  snprintf(line[6], sizeof(line[6]), "last OUT %02X=%02X pc %02X%02X m1 %u",
+           d[23], d[24], d[26], d[25], d[27]);
+  for(int i=0;i<7;i++) paras[i] = line[i];
+  paras[7] = NULL;
+  menu_text_open(menu, title, paras);
+}
+
 static void menu_text_open(menu_t *menu, const char *title, const char **paras) {
   u8g2_SetFont(MENU2U8G2(menu), font_helvR08_te);
   text_nlines = 0;
@@ -1152,6 +1179,12 @@ static void menu_text_open(menu_t *menu, const char *title, const char **paras) 
   text_parent = menu->form;
   text_entry  = menu->entry;
   menu_goto_form(menu, MENU_FORM_TEXT, 0);
+}
+
+// a line of the open text page, for the host test (menu_test.c) to see
+// which page it is - NULL past the end
+const char *menu_text_line(int n) {
+  return (n >= 0 && n < text_nlines) ? text_lines[n] : NULL;
 }
 
 static void menu_text_draw(menu_t *menu) {
@@ -1390,7 +1423,14 @@ static void menu_select(menu_t *menu) {
 
   case 'T':
     // a page of text
-    if(core_id == CORE_ID_PK8000) menu_text_open(menu, menu_get_str(menu, s, MENU_ENTRY_INDEX_LABEL), about_pk8000);
+    if(core_id == CORE_ID_PK8000) {
+      // menu_get_str returns the REST of the form string ("Debug,;..."),
+      // so a label is a prefix compare up to its comma: strcmp opened the
+      // About text for the Debug entry on the third flash (4 Sep 2026)
+      const char *label = menu_get_str(menu, s, MENU_ENTRY_INDEX_LABEL);
+      if(!strncmp(label, "Debug,", 6)) menu_debug_open(menu, label);
+      else                             menu_text_open(menu, label, about_pk8000);
+    }
     break;
 
   case 'L':

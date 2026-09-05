@@ -320,6 +320,26 @@ module tb_top;
         end
     endtask
 
+    // SYS command 7: the debug window, as sys_get_debug() in
+    // mnano/sysctrl.c reads it - an offset, then eight bytes
+    reg [7:0] dbgb [0:31];
+    integer dbg_i, dbg_o;
+    task sys_debug;
+        begin
+            for (dbg_o = 0; dbg_o < 32; dbg_o = dbg_o + 8) begin
+                spi_begin;
+                spi_byte(8'd0);             // target SYS
+                spi_byte(8'd7);             // command "debug"
+                spi_byte(dbg_o[7:0]);       // the offset
+                for (dbg_i = 0; dbg_i < 8; dbg_i = dbg_i + 1) begin
+                    spi_byte(8'h00);
+                    dbgb[dbg_o + dbg_i] = spi_rx;
+                end
+                spi_end;
+            end
+        end
+    endtask
+
     //--------------------------------------------------------------------
     // Run
     //--------------------------------------------------------------------
@@ -530,7 +550,16 @@ module tb_top;
                  m1_count, io_count, inta_count, irq_count, wait_count);
         if (!$test$plusargs("NOMEMCHECK"))
             $display("[tb] read-after-write: %0d checked, %0d wrong", mem_checks, mem_errs);
+        $display("[tb] sdram self-test: done %b, fail %b, late capture %b  (expect 1 0 0 against the model)",
+                 uut.bist_done, uut.bist_fail, uut.cap_late);
         $display("[tb] address stability at the strobe: %0d cycles, %0d moved", adr_checks, adr_errs);
+        sys_debug;
+        $display("[tb] memcheck (CMD 7): %0d reads checked, %0d writes shadowed, %0d wrong; first %02x at %02x%02x got %02x pc %02x%02x; last %02x at %02x%02x got %02x pc %02x%02x",
+                 {dbgb[20], dbgb[19]}, {dbgb[22], dbgb[21]}, dbgb[2],
+                 dbgb[5], dbgb[4], dbgb[3], dbgb[6], dbgb[8], dbgb[7],
+                 dbgb[11], dbgb[10], dbgb[9], dbgb[12], dbgb[14], dbgb[13]);
+        $display("[tb] memcheck: flags %02x, %0d cpu resets, %0d fetches at 0000 (last from %02x%02x), last OUT %02x=%02x, pc %02x%02x",
+                 dbgb[0], dbgb[15], dbgb[16], dbgb[18], dbgb[17], dbgb[23], dbgb[24], dbgb[26], dbgb[25]);
         $display("[tb] video: %0d tile fetches, mode %0d, screen bank %0d, text base %0d, sg base %0d",
                  vid_fetches, uut.vmode, uut.vbank, uut.txt_base, uut.sg_base);
         $display("[tb] i2s: %0d frames, %0d with sound", i2s_frames, i2s_nonzero);

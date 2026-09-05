@@ -14,6 +14,7 @@
 #define SPI_SYS_SETVAL    4
 #define SPI_SYS_IRQ_CTRL  5
 #define SPI_SYS_POKE      6   // PK8000: an address and bytes into the machine's RAM (bas.c)
+#define SPI_SYS_DEBUG     7   // PK8000: the debug window (memcheck.v) - an offset, then bytes
 
 #define SPI_TARGET_HID    1   // human interface devices
 #define SPI_HID_STATUS    0

@@ -67,6 +67,7 @@ void sys_set_val(spi_t *spi, char id, uint8_t v) {
   if(set_n < 256) { set_log[set_n][0] = id; set_log[set_n][1] = v; }
   set_n++;
 }
+void sys_get_debug(spi_t *spi, unsigned char *buf, int len) { (void)spi; memset(buf, 0, len); }
 static int set_last(char id) {
   for(int i=set_n-1;i>=0;i--) if(set_log[i][0] == id) return set_log[i][1];
   return -1;
@@ -209,16 +210,17 @@ int main(int argc, char **argv) {
   menu_do(menu, MENU_EVENT_SHOW);
   shot("main");
 
-  //---- the main form: four image slots, Run .bas, Reset, Hardware, About, Save settings
+  //---- the main form: four image slots, Run .bas, Reset, Hardware, About, Debug, Save settings
   CHECK(menu->form == 0 && menu->entry == 1, "start: form %d entry %d", menu->form, menu->entry);
   CHECK(strstr(menu->forms[0], "PK8000 Nano,;") == menu->forms[0], "main form title: %s", menu->forms[0]);
   CHECK(strstr(menu->forms[0], "F,Tape:,0|cas;") && strstr(menu->forms[0], "F,Floppy A:,1|fdd;") &&
         strstr(menu->forms[0], "F,Floppy B:,2|fdd;") && strstr(menu->forms[0], "F,Hard disk:,3|img+hdd;") &&
         strstr(menu->forms[0], "F,Run .bas:,5|bas;") &&
         strstr(menu->forms[0], "B,Reset,R;") && strstr(menu->forms[0], "S,Hardware,1;") &&
-        strstr(menu->forms[0], "T,About,;") && strstr(menu->forms[0], "B,Save settings,S;"),
+        strstr(menu->forms[0], "T,About,;") && strstr(menu->forms[0], "T,Debug,;") &&
+        strstr(menu->forms[0], "B,Save settings,S;"),
         "main form entries: %s", menu->forms[0]);
-  CHECK(menu->entries == 10, "main form has %d entries, expected 10", menu->entries);
+  CHECK(menu->entries == 11, "main form has %d entries, expected 11", menu->entries);
   CHECK(strstr(menu->forms[1], "Hardware,0|7;") == menu->forms[1], "Hardware title: %s", menu->forms[1]);
   CHECK(strstr(menu->forms[1], "F,ROM disk:,4|bin+rom;") && strstr(menu->forms[1], "B,Rewind tape,e;"),
         "Hardware entries: %s", menu->forms[1]);
@@ -470,6 +472,7 @@ int main(int argc, char **argv) {
   CHECK(menu->entry == 8, "About entry %d", menu->entry);
   menu_do(menu, MENU_EVENT_SELECT);
   CHECK(menu->form == MENU_FORM_TEXT && menu->offset == 0, "About: form %d offset %d", menu->form, menu->offset);
+  CHECK(menu_text_line(0) && !strncmp(menu_text_line(0), "PK8000 Nano", 11), "About shows '%s'", menu_text_line(0));
   shot("about-0");
   menu_do(menu, MENU_EVENT_DOWN);
   CHECK(menu->offset == 1, "About scrolled to %d", menu->offset);
@@ -492,17 +495,30 @@ int main(int argc, char **argv) {
   menu_do(menu, MENU_EVENT_SELECT);
   CHECK(menu->form == 0 && menu->entry == 8, "back from About: form %d entry %d", menu->form, menu->entry);
 
-  //---- Save settings is a button on the main form: it writes the card (fails here, no card)
-  menu_do(menu, MENU_EVENT_PGDOWN);
-  CHECK(menu->entry == 9 && menu->offset == 5, "Save settings entry %d offset %d", menu->entry, menu->offset);
+  //---- Debug: a text page of the core's memcheck bytes (all zero here: sys_get_debug is stubbed)
+  menu_do(menu, MENU_EVENT_DOWN);
+  CHECK(menu->entry == 9, "Debug entry %d", menu->entry);
   n = set_n;
   menu_do(menu, MENU_EVENT_SELECT);
-  CHECK(menu->form == 0 && menu->entry == 9 && set_n == n && osd_visible, "Save settings left the main form or sent something");
+  CHECK(menu->form == MENU_FORM_TEXT && menu->offset == 0 && set_n == n, "Debug: form %d offset %d", menu->form, menu->offset);
+  // the page must be the debug lines, not the About text: the label compare
+  // in menu.c opened About for it on the third flash (4 Sep 2026)
+  CHECK(menu_text_line(0) && !strncmp(menu_text_line(0), "por ", 4), "Debug shows '%s'", menu_text_line(0));
+  shot("debug");
+  menu_do(menu, MENU_EVENT_SELECT);
+  CHECK(menu->form == 0 && menu->entry == 9, "back from Debug: form %d entry %d", menu->form, menu->entry);
+
+  //---- Save settings is a button on the main form: it writes the card (fails here, no card)
+  menu_do(menu, MENU_EVENT_PGDOWN);
+  CHECK(menu->entry == 10 && menu->offset == 6, "Save settings entry %d offset %d", menu->entry, menu->offset);
+  n = set_n;
+  menu_do(menu, MENU_EVENT_SELECT);
+  CHECK(menu->form == 0 && menu->entry == 10 && set_n == n && osd_visible, "Save settings left the main form or sent something");
   shot("main-end");
   menu_do(menu, MENU_EVENT_DOWN);    // the main form's title is not selectable: straight to Tape
   CHECK(menu->entry == 1 && menu->offset == 0, "DOWN past Save settings: entry %d offset %d, expected Tape", menu->entry, menu->offset);
   menu_do(menu, MENU_EVENT_UP);
-  CHECK(menu->entry == 9 && menu->offset == 5, "UP from Tape: entry %d offset %d, expected Save settings", menu->entry, menu->offset);
+  CHECK(menu->entry == 10 && menu->offset == 6, "UP from Tape: entry %d offset %d, expected Save settings", menu->entry, menu->offset);
   menu_do(menu, MENU_EVENT_HIDE);
 
   printf("menu-test: %d screens in %s, %d error(s)\n", shots, outdir, errors);

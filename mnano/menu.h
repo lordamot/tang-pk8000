@@ -52,5 +52,6 @@ menu_t *menu_init(u8g2_t *u8g2);
 #endif
 
 void menu_do(menu_t *, int);
+const char *menu_text_line(int);   // a line of the open text page (tests)
 
 #endif // MENU_H

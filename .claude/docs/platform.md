@@ -62,6 +62,20 @@ BASIC ROM's first instructions set port 80h to the layout it wants
 `XRA A / MOV M,A / CMP M / JZ / INX H` loop - about 110 ms, and it
 retries for ever on a failure.
 
+**The ROM's boot, as a sequence of what shows** (disassembled at 2920h,
+4 Sep 2026, after the first board): 87h=81h, 84h=00h (mode 1), 83h=82h,
+80h=FCh, 86h=DFh (display on), 87h=05h, **88h=77h - cyan border**; the
+RAM test; then `LXI SP,F7FF / LXI B,0 / PUSH B / CMA / OUT 88h` -
+**88h=0FFh, a white border** the moment the test passes (A is the
+zero the loop ended on); two routines copied to F800h and F8F0h by
+`CALL 005Ch`, 4000h bytes filled by `CALL 0056h`, then 88h=0Fh and the
+rest of BASIC's initialisation.  The picture stays black through all
+of it - mode 1 with the colour RAM at zero - so the border colour is
+the whole boot indicator: cyan for ever is the zero test failing,
+white for ever or blinking with cyan is the code after it failing on
+the stack (a RET that pops zeros returns to 0000h), the banner is
+BASIC.
+
 Emu80 tags RAM pages with 1 and everything else with 0, and the wait
 tables are indexed by that tag; `top.v`'s `rom_now` is `page != 3`.
 

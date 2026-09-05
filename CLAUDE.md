@@ -29,10 +29,17 @@ tang/rom/ the ROM images and the schematics the design was read from
 
 `make lint` and `make sim` are the cheap checks; `make bitstream` is the
 real one.  `make help` lists the rest.  **What cannot be done here is
-running it on a board, and as of 4 Sep 2026 no bitstream of this design
-has been on one.**  So "it builds", "it lints", "it boots in
-simulation" and "it meets timing" are four different claims, none of
-them is "it works", and you should say which one you are making.
+running it on a board, and the three bitstreams that have been on one
+(the evening of 4 Sep 2026) did not boot: the ROM's RAM test passed
+and nothing after it did, and the SDRAM's own four-byte self-test
+passed too - see `.claude/docs/progress.md`, "The first board", "The
+second flash", "The third flash".  The third carries `memcheck.v` and
+the OSD's Debug page to say what the RAM gave the CPU; a firmware bug
+showed About in its place, fixed 5 Sep, and the page is still
+unread.**  So "it builds", "it
+lints", "it boots in simulation" and "it meets timing" are four
+different claims, none of them is "it works", and you should say which
+one you are making.
 
 The machine, as implemented: vm80a (1801BM1's gate-level КР580ВМ80А)
 on a 30 MHz clock with the two phases as enables, a T-state of twelve
@@ -50,7 +57,7 @@ the SD card's image slots through `sd_arbiter.v`, and one of the three
 expansion-page devices at a time by the OSD's 'x'.
 
 ```
-Logic 29%   Register 17%   BSRAM 25/46 (55%)   PLL 2/2 (100%)  [4 Sep 2026 PnR, v0.2.0; clk30 makes 62.8 MHz, 0 violations]
+Logic 33%   Register 18%   BSRAM 28/46 (61%)   PLL 2/2 (100%)  [5 Sep 2026 PnR, v0.2.0 + memcheck.v + A10; clk30 makes 65.8 MHz, 0 violations]
 ```
 
 Key documentation: `.claude/docs/platform.md` (the machine: memory
@@ -93,14 +100,52 @@ the Makefile, what lint and simulation do and do not cover, flashing),
   bytes were the only ones that failed.  The capture is at slot clock
   3 (`sdram.v`'s header has the arithmetic); `+DQTRACE` in the
   testbench shows the bus clock by clock; and a read-after-write count
-  with "0 wrong" is only evidence if the data was not zero.
+  with "0 wrong" is only evidence if the data was not zero.  On the
+  board the self-test passes at clock 3 and the ROM still restarts
+  (second flash), so "the memory answers the controller" and "the
+  memory answers the CPU" are also two claims.
+- **The SDRAM model runs a controller that never precharges, and the
+  board does not.**  `sdram.v`'s column word was `{2'b0, 1'b1, col}` -
+  UKNC Nano's `{5'b00100, col}` repacked from 13 bits to 11, the 1
+  landing on A8 instead of A10 - so no access auto-precharged and every
+  ACTIVE hit a bank with a row still open.  The model opened the new
+  row anyway and BASIC booted for a whole day; the chip aliased all
+  64 KB into one row: zeros read back, the four-byte self-test passed
+  (one row, nothing between write and read), and the stack came back
+  as the zeros a later fill wrote (the third flash's Debug page, 5 Sep
+  2026).  The model now honours auto-precharge, refuses an ACTIVE on an
+  open bank and prints the count at the end ("must be 0"); a change to
+  the command sequence reads that line - the first fix, `{2'b01, 1'b0,
+  col}`, put the 1 on A9 and that line said so.  Write a single bit of
+  an address word at its own position (`{1'b1, 2'b00, col}`), never
+  inside a wider literal.  And a self-test that passes proves what it
+  exercised: the pads and the capture clock, not the row handling.
+- **The board's only readouts are six active-low LEDs, the border
+  colour and the OSD's Debug page.**  `leds[n] = ~signal`, so a lit
+  LED is the signal TRUE: LED0 lit is the power-on reset finished and
+  LED5 lit is the SDRAM initialised (the first table said the
+  opposite).  The Debug page (`memcheck.v`, `sysctrl.v` CMD 7,
+  `menu_debug_open`) is a shadow of F000h-FFFFh checked against every
+  read plus the CPU's counters; `build.md`, "Reading the board", says
+  how to read it.  Adding a byte to it is `memcheck.v`'s `dbg` map,
+  the testbench's `sys_debug` print, and the page's `snprintf`.  **The
+  third flash opened About for it**: `menu_get_str` returns the rest
+  of the form string, not one field, so a label is compared as a
+  prefix up to its comma; `menu_test.c` reads the open page through
+  `menu_text_line()` and checks which page it is.
 - **The ROM's first act is a RAM test of F000h-FFFFh that retries for
   ever if a byte does not read back** (2942h: `XRA A / MOV M,A / CMP M
   / JZ / INX B ... JNZ 293C`).  A machine "stuck at boot with a cyan
   border" (port 88h = 77h is set just before) is the memory, not the
-  video.  Then it copies two routines to F800h/F8F0h and calls into
-  them; a RET to 0000h from 0066h is the stack (F7FDh down) reading
-  wrong.
+  video.  **The moment the test passes the ROM writes 88h = 0FFh - a
+  white border** (295Ch, `CMA` of the loop's zero) - then copies two
+  routines to F800h/F8F0h and calls into them; a RET to 0000h from
+  0066h is the stack (F7FDh down) reading wrong, and the ROM starts
+  over.  So a white border blinking cyan is "zeros read back, other
+  bytes do not": defect 2's picture, and what the first board showed
+  on 4 Sep 2026.  The test only ever writes zeros; it proves nothing
+  about the data path.  `sdram.v` now tests four non-zero bytes itself
+  at init and reports on LEDs 2 and 3 (`.claude/docs/build.md`).
 - **`vm80a`'s SYNC and status byte appear on the F2 edge and the
   address is valid then** - the testbench checks it stays put through
   the T-state ("address stability at the strobe: 0 moved").  `cpu8080.v`

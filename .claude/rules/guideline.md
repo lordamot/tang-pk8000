@@ -21,9 +21,13 @@ simulates, and the simulation runs the BASIC ROM to its prompt.
 What still cannot be done here is **running it on a board**.  So say which
 claim you are making: built, linted, simulated and timed are four
 different things and none of them is "works".  **Never imply a bitstream
-was tested.**  As of 4 Sep 2026 NO bitstream of this design has been on a
-board at all; `.claude/docs/progress.md` says so and must keep saying so
-until one has.
+was tested.**  As of the morning of 5 Sep 2026 three bitstreams have
+been on a board and none booted (`.claude/docs/progress.md`, "The
+first board", "The second flash", "The third flash"); the third's
+Debug page, read on 5 Sep, named the fault (the controller never
+precharged, defect 16), and the fourth bitstream, with the fix, waits
+to be flashed.  progress.md carries what each flash showed and must
+keep doing so.
 
 If something else needs to be installed onto the host system - ask for it.
 Nothing goes outside `tools/` without asking.  The operator will do it or

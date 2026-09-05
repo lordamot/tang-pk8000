@@ -52,7 +52,10 @@ module sysctrl (
   // CMD 6: a byte into the machine's RAM
   output reg        poke_stb,
   output reg [15:0] poke_adr,
-  output reg [7:0]  poke_data
+  output reg [7:0]  poke_data,
+
+  // CMD 7: the debug window (memcheck.v), 32 bytes
+  input [255:0]     dbg
 );
 
 reg [3:0] state;
@@ -64,6 +67,9 @@ wire [7:0] data_in_rev = { data_in[0], data_in[1], data_in[2], data_in[3],
                            data_in[4], data_in[5], data_in[6], data_in[7] };
 
 reg coldboot = 1'b1;
+
+// CMD 7's byte index: the offset plus the strobes since it, wrapping
+wire [4:0] dbg_ix = id[4:0] + {1'b0, state} - 5'd1;
 
 assign int_out_n = (int_in != 8'h00 || coldboot)?1'b0:1'b1;
 
@@ -154,6 +160,15 @@ always @(posedge clk) begin
                 if(state == 4'd1) poke_adr[15:8] <= data_in;
                 if(state == 4'd2) poke_adr[7:0]  <= data_in;
                 if(state >= 4'd3) begin poke_data <= data_in; poke_stb <= 1'b1; end
+            end
+
+            // CMD 7: the debug window - the offset, then the bytes
+            if(command == 8'd7) begin
+                if(state == 4'd1) begin
+                    id <= data_in;
+                    data_out <= dbg[8*data_in[4:0] +: 8];
+                end else
+                    data_out <= dbg[8*dbg_ix +: 8];
             end
 
             // CMD 5: interrupt control

@@ -150,6 +150,72 @@ serial port (`/dev/ttyACM0`); `make flash-mcu COMX=/dev/ttyACM0` (needs
 LOAD HANDSHAKE FAIL` means the port opened and nothing answered: not in
 boot mode, or the wrong port.  Press RST afterwards.
 
+## Reading the board
+
+The six LEDs, lit when the thing is true (`top.v`'s last lines; the
+board's LEDs are active low and the assignments invert, so a lit LED
+is the signal at 1):
+
+```
+LED0  the power-on reset has finished (lit 280 ms after the memory is up)
+LED1  the beeper is on
+LED2  the tape is running - or, at boot, the SDRAM self-test chose the
+      late capture (sdram.v: the word was on the bus on slot clock 4, not 3)
+LED3  a disk or SD transfer is busy - or, at boot, the SDRAM self-test
+      FAILED both captures
+LED4  the CPU is held in reset
+LED5  the SDRAM is initialised
+```
+
+So a healthy start is LED5 then LED0 coming on, LED4 going out, and 2
+and 3 dark - which is what the second flash showed (4 Sep 2026, 22:50:
+"LED1 and LED6 counted from 1").  What the screen says while the ROM
+boots, from its own code (`platform.md`, the boot sequence): a
+**cyan** border while the RAM test of F000h-FFFFh runs (about 110 ms),
+**white** the moment it passes, black with the BASIC banner once BASIC
+has initialised.  A cyan border that stays is the zero test failing; a
+white border that stays, or blinks with cyan, is the test passing and
+the code after it - which puts non-zero bytes through the stack -
+failing back to 0000h: the memory reads zeros right and other values
+wrong.  Both boards showed that, and the Debug page of 5 Sep 2026 said
+why (`progress.md`, "The Debug page read": the controller never
+precharged).  The OSD on F12 says whether the MCU link works, and
+needs no memory.
+
+**The Debug page** (main form, below About) is the instrument for
+everything after that: `memcheck.v` keeps a shadow of F000h-FFFFh in
+BSRAM, compares every read from there with it as the word comes back,
+and counts; the MCU reads 32 bytes through `sysctrl.v`'s CMD 7 and
+formats them (`menu_debug_open`, menu.c).  Open it while the machine is
+doing whatever it does; open it again for a second sample.  The lines:
+
+```
+por 1 init 1 rst 0 bist 1 fail 0 late 0     the flags, as the LEDs
+F000-FFFF: 4100 rd 4351 wr 0 bad             reads checked, writes shadowed, mismatches
+1st F7FC exp 29 got 00 pc 005C               the first mismatch: address, shadow, memory, last opcode fetch
+last ....                                    the most recent one
+cpu resets 2, M1 at 0000: 2                  resets seen; opcode fetches from 0000h
+  last from 292A                             the fetch before the last one at 0000h
+last OUT 88=FF pc 24C1 m1 37                 the last port write, the last opcode address, a fetch counter
+```
+
+"bad" at 0 with the ROM still restarting means the RAM told the CPU
+the truth and the fault is elsewhere; "M1 at 0000" climbing faster
+than "cpu resets" is the ROM jumping to 0000h by itself, and "last
+from" says from where.  A counter that does not move between two
+samples is a machine that has stopped.  The simulation's numbers
+(`make sim`, the `[tb] memcheck` lines) are what a working machine
+shows.
+
+The first page ever read (5 Sep 2026, the third flash) was `F000-FFFF:
+65535 rd 65535 wr 80 bad / 1st F7F9 exp 51 got 00 pc 24C4 / last F7FC
+exp 29 got 00 pc 24C5 / cpu resets 3, M1 at 0000: 23, last from 24C5`:
+stack bytes pushed by the ROM's fill routine coming back as the zeros
+the fill wrote elsewhere.  With the ROM listing beside it that named
+the row handling in `sdram.v` within the hour (`progress.md`).  The
+"pc" is the last opcode fetch before the read, so a `POP`'s mismatch
+carries its own address and a `RET`'s the RET's.
+
 ## The SD card
 
 FAT32.  The firmware reads it through the FPGA's `sd_card.v` and keeps

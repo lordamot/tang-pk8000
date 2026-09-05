@@ -78,6 +78,18 @@ void sys_set_val(spi_t *spi, char id, uint8_t value) {
   spi_end(spi);  
 }
 
+// PK8000: the debug window (memcheck.v through sysctrl.v's CMD 7),
+// eight bytes a transaction - the core answers one strobe behind, so
+// the byte after the offset is already the first of them
+void sys_get_debug(spi_t *spi, unsigned char *buf, int len) {
+  for(int off=0;off<len;off+=8) {
+    sys_begin(spi, SPI_SYS_DEBUG);
+    spi_tx_u08(spi, off);
+    for(int i=0;i<8 && off+i<len;i++) buf[off+i] = spi_tx_u08(spi, 0);
+    spi_end(spi);
+  }
+}
+
 unsigned char sys_irq_ctrl(spi_t *spi, unsigned char ack) {
   sys_begin(spi, SPI_SYS_IRQ_CTRL);
   spi_tx_u08(spi, ack);

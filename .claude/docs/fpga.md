@@ -15,7 +15,7 @@ bitstream.
 |---|---|
 | top | `top.v` - the clock, the resets, the counters, the memory map, the mix, and every instance |
 | the machine | `pk8000/vm80a.v` (the КР580ВМ80А, 1801BM1, verbatim), `pk8000/cpu8080.v` (its bus, the status decode, the interrupt, the wait model), `pk8000/waits_rom.v` (generated: the wait tables), `pk8000/sdram.v` (the 64 KB and the ROM disk above it), `pk8000/pk8000_rom.v` (generated: the BASIC ROM in pROMs), `pk8000/ports.v` (the ВВ55s, video registers, keyboard, joysticks), `pk8000/video.v` (the display) |
-| the peripherals | `pk8000/sd_arbiter.v` (one owner on the SD path), `pk8000/tape.v` (the cassette player), `pk8000/fdc.v` + `pk8000/wd1793.sv` (MiSTer's ВГ93) + `pk8000/fdc_rom.v` (generated), `pk8000/ide.v` + `pk8000/hdd_rom.v` (generated), `pk8000/romdisk.v`, `pk8000/ay.v` + `pk8000/ym2149.sv` (UKNC Nano's), `pk8000/poke.v` (the MCU's bytes into the RAM) |
+| the peripherals | `pk8000/sd_arbiter.v` (one owner on the SD path), `pk8000/tape.v` (the cassette player), `pk8000/fdc.v` + `pk8000/wd1793.sv` (MiSTer's ВГ93) + `pk8000/fdc_rom.v` (generated), `pk8000/ide.v` + `pk8000/hdd_rom.v` (generated), `pk8000/romdisk.v`, `pk8000/ay.v` + `pk8000/ym2149.sv` (UKNC Nano's), `pk8000/poke.v` (the MCU's bytes into the RAM), `pk8000/memcheck.v` (the debug window: a shadow of F000h-FFFFh checked against every read, CPU counters, 32 bytes for `sysctrl.v`'s CMD 7) |
 | clock, sound | `sys_pll.v` (rPLL by hand: 27 -> 30 MHz), `i2s_tx.v` |
 | MiSTeryNano | `mister/{mcu_spi,sysctrl,hid,osd_u8g2,sd_card,sd_rw,sdcmd_ctrl,sector_dpram}.v` - UKNC Nano's copies; `sysctrl.v` rewritten for this core's letters, `hid.v` given a keyboard strobe |
 | HDMI | `hdmi/{hdmi_tx,tmds_channel,hdmi_packet,hdmi_serdes}.v` - UKNC Nano's encoder with audio; `hdmi_tx.v` at 30 MHz with three packets an island, `hdmi_serdes.v` at 150 MHz |
@@ -30,8 +30,8 @@ from the host on the same core-side interface (`+TAPE=`, `+FDDA=`,
 ## Resources
 
 ```
-Logic 30%   Register 17%   BSRAM 25/46 (55%)   PLL 2/2   [4 Sep 2026 PnR, v0.2.0 with poke.v]
-clk30: needs 30 MHz, makes 70.3 MHz; 0 setup, 0 hold violations
+Logic 33%   Register 18%   BSRAM 28/46 (61%)   PLL 2/2   [4 Sep 2026 PnR, v0.2.0 with memcheck.v]
+clk30: needs 30 MHz, makes 55.4 MHz; 0 setup, 0 hold violations
 v0.1.0 for comparison: Logic 17%, Register 10%, BSRAM 11/46, clk30 66.6 MHz
 ```
 
@@ -91,6 +91,33 @@ tphase   0   1   2   3   4   5   6   7   8   9  10  11
   taken at the next free video slot).
 - Writes are posted; a write and the read after it are in different
   T-states, so order is kept by construction.
+- **Every access is ACTIVE, then READ or WRITE with auto-precharge (A10
+  set), one row open for two clocks and closed by the chip itself**, so
+  the next slot's ACTIVE finds its bank idle whatever row it wants.
+  Until 5 Sep 2026 the column word had its 1 on A8, not A10 - UKNC
+  Nano's `{5'b00100, col}` repacked into an 11-bit bus - and nothing
+  precharged: every ACTIVE after the first was to a bank with a row
+  open, which the part does not define.  On the board all 64 KB
+  behaved as one 512-byte row (the third flash's Debug page:
+  the stack's bytes came back as the zeros a later fill wrote), and the
+  simulation model, which just opened the new row, booted BASIC.  The
+  model honours A10 and refuses such an ACTIVE now, and reports the
+  count at the end of a run.
+- **The read is captured on slot clock 3** - the chip is clocked by the
+  PLL's copy 90 degrees behind, takes the READ inside our clock 2 and,
+  with CAS latency 2, has the word on the bus a third of the way into
+  clock 3 until a quarter into clock 4 (`sdram.v`'s header).  The pads
+  are not analysed by the tool, so **after `init` the controller tests
+  itself**: four non-zero bytes to 0FFF0h-0FFF3h through the CPU slot,
+  read back in the same order (a bus that echoes the last write does
+  not pass).  If they do not come back it captures on clock 4 instead
+  (`cap_late`) and tries again; a second failure raises `bist_fail` and
+  puts the capture back.  Both are on the LEDs (`build.md`, reading the
+  board) and in the testbench's end-of-run lines; `+SDRAM_LATE` makes the
+  model a clock late and shows the move happening.  The CPU is in reset
+  for 280 ms after `init`, the test takes 4 us.  Added after the first
+  board (4 Sep 2026), which showed the ROM's zero-fill RAM test passing
+  and the stack failing - defect 2's picture, on hardware.
 
 No arbiter, no CDC, nothing that depends on placement.  The cost is
 that everything that touches memory has to be a phase of `tphase`; a

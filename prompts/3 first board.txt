@@ -1,0 +1,188 @@
+I flashed tang and bl to test. it seems it can not start - shows wide black screen and upper and bottom white borders blinking colors
+
+****
+
+What the picture says, read against the ROM's own code: the memory reads zeros correctly and other values wrong. The HDMI side is fine.
+
+The geometry is the machine's. A 384-line black picture with 104 and 88 lines of border above and below is the 768x576 frame at 50.73 Hz, and the monitor took it, so both PLLs, the serialiser and the raster work (defect 6 closed).
+
+The border is port 88h, and the ROM writes it three times at boot (disassembled at 2920h): 77h, cyan, just before the RAM test of F000h-FFFFh; 0FFh, white, the instant the test passes (295Ch: LXI SP / PUSH B / CMA / OUT 88h); and 0Fh, black, only when BASIC initialises. A white border means the zero-fill test passed. Blinking with cyan means the ROM keeps restarting: the code right after the test calls the copy routine at 005Ch through the stack, and a RET that pops zeros returns to 0000h. The picture stays black because the machine never leaves the ROM's mode 1 with the colour RAM at zero.
+
+That is exactly the picture simulation defect 2 had, when the SDRAM word was captured on the wrong slot clock: the test writes only zeros, so it passes with a broken data path. The capture clock in sdram.v rests on arithmetic (chip clocked 90 degrees behind, CAS latency 2, word on the bus in slot clock 3) that the simulation model was written to and the tool does not check, since the SDRAM pads are unconstrained. UKNC Nano's controller uses the same phase and latency and works, so I could not settle it from here; a scratch build with set_output_delay/set_input_delay on the pads was accepted with no violation but reported no path through them, so it proved nothing and is not in the SDC.
+
+What I did instead: sdram.v now tests itself. After init, while the CPU is still held in reset for 280 ms, it writes 55h AAh 5Ah A5h to 0FFF0h-0FFF3h and reads them back in the same order (an echo of the last write does not pass). On a mismatch it moves the capture to slot clock 4 and repeats; if that fails too it flags. LED2 lit at boot means the late capture was chosen, LED3 lit means both failed. Verified in simulation both ways: against the model it reports done / no fail / clock 3 and the boot to the BASIC prompt is unchanged (214539 reads checked, 0 wrong, 768x576, 0 ECC errors); with the model deliberately a clock late (+SDRAM_LATE) it moves to clock 4 and the boot run's read-after-write check stays at 0 wrong. Rebuilt: 0 violations, timing gate green, bin/tang.fs replaced. This bitstream has not been on the board.
+
+Please flash bin/tang.fs again (replug, flash, power-cycle; the firmware is unchanged) and tell me the LEDs and the border colour:
+- LED2 lit, LED3 dark, BASIC's banner: the capture clock was the whole problem.
+- LED2 and LED3 dark, same white/cyan blinking: four bytes pass in isolation and the ROM still fails; next suspects are refresh, the video slot's reads interleaved with the CPU's, or the byte lanes.
+- LED3 lit: the interface is wrong beyond the capture clock (command setup at the chip, the PLL phase, the mode word).
+- LED4 lit for ever: the CPU is held; does F12 open the OSD?
+
+Docs updated: progress.md ("The first board", defect 16 open, defect 6 closed), build.md ("Reading the board": the LEDs and what the border colours mean), fpga.md (the self-test), platform.md (the ROM's boot sequence with its port writes), CLAUDE.md and guideline.md (the board has been flashed once and did not boot). Nothing committed.
+
+restore last session test instructions - host machine hang again. check tang state, and then I am ready to flash bl companion
+
+****
+
+The tree is consistent and the rebuilt bitstream is ready.  Here is the state and the test procedure.
+
+What the last session left (recovered from progress.md and build.md, both uncommitted):
+
+- The first board showed a white border blinking cyan: the ROM's zero-fill RAM test passes, the code after it fails through the stack.  Memory reads zeros right, other bytes wrong.  Logged as defect 16.
+- Fix attempted: sdram.v now self-tests four non-zero bytes at init and moves its read capture from slot clock 3 to 4 if they come back wrong.  Verdict on LEDs 2 and 3.
+- That rebuild is bin/tang.fs, timestamped 20:20, never flashed.
+
+Tang state, checked now:
+
+- bin/tang.fs is byte-identical to the place-and-route output, and both are newer than every edited source (sdram.v, top.v at 20:18).
+- make timing on that report: 0 setup, 0 hold, only the declared clocks.  make lint is clean.
+- Resources: Logic 30%, Register 17%, BSRAM 25/46, PLL 2/2.
+- bin/bl616.bin (17:20) is current.  The only newer file under mnano/ is the host-side menu test, which is not part of the firmware.
+- Nothing is committed yet.  All of this is in the working tree.
+
+Flash order.  Do the BL616 first, then the FPGA, since the FPGA flash needs a replug anyway.
+
+1. BL616: hold BOOT, tap RESET, release BOOT.  Right now only the FTDI (/dev/ttyUSB0/1) is on the bus, so the chip is not yet in boot mode.  Once /dev/ttyACM0 appears:
+     sg dialout -c 'make flash-mcu COMX=/dev/ttyACM0'
+   BFLB IMG LOAD HANDSHAKE FAIL means not in boot mode or wrong port.  Press RST afterwards.
+2. FPGA: replug the USB cable, then make flash-fpga-flash, then power-cycle the board.  Skipping the power-cycle leaves the old configuration running.
+
+What to read off the board, from build.md "Reading the board":
+
+  LED2 lit, LED3 dark, BASIC banner - the capture clock was the bug, fixed
+  LED2 and LED3 dark, still white/cyan blinking - four bytes pass in isolation, fail under the ROM: refresh, video/CPU slot interleave, or byte lanes
+  LED3 lit - interface wrong beyond the capture clock: command setup, PLL phase, or mode word
+  LED4 lit for ever - CPU held: MCU link or init.  Try F12 for the OSD
+  LED0 and LED5 go out, LED4 follows - healthy start
+
+Border colours: cyan is the RAM test running, white is the test passed, black with the banner is BASIC up.  F12 opening the OSD proves the MCU link independently of memory.
+
+Tell me the LEDs and the border after the power-cycle, and I will take it from there.
+
+companion board connected
+
+****
+
+The BL616 was in boot mode on /dev/ttyACM0 (Bouffalo CDC DEMO).  Flashed bin/bl616.bin with sg dialout -c 'make flash-mcu COMX=/dev/ttyACM0': 433920 bytes written, the SHA256 read back from the chip matches the host's, "All programming completed successfully", 5.0 s in all.
+
+Next:
+1. Press RST on the BL616 so it leaves the bootloader and runs the firmware.
+2. Plug the Tang Nano 20K in (only the BL616 is on the bus now; the FTDI at /dev/ttyUSB0/1 is gone), then say so and I run make flash-fpga-flash.  Power-cycle afterwards.
+
+нфтп сщттусеув
+
+****
+
+(read as "tang connected", typed on the Russian layout)
+
+The FTDI was back on /dev/ttyUSB0/1.  make flash-fpga-flash: erase and write of bin/tang.fs both reached 100%, "Done".  Power-cycle the board now (openFPGALoader's -r does not reliably reconfigure the chip), then report the LEDs and the border colour against the table above.
+
+- osd works (and it was working before
+- leds lit first nearby S1 and last one - LED1 and LED6 it seems, if count from 1
+- borders blinking white/cyan
+
+****
+
+The self-test passed and the ROM still restarts.  Those two LEDs are LED0 and LED5 in top.v's numbering, whichever end the row is counted from, and the code lights them when the power-on reset has finished and the SDRAM is initialised (the table in build.md had those two inverted; fixed).  LED2 and LED3 dark means the memory's four-byte self-test passed on the original capture clock.  So the memory answers the controller and does not answer the ROM: the capture clock was not the bug.
+
+Rather than guess again I built an instrument and it is ready to flash.
+
+What is in this build:
+- memcheck.v, a shadow of F000h-FFFFh in BSRAM.  Every write into the SDRAM's CPU port that lands there is copied; every read from there is compared with the copy when the word comes back.  It keeps the first and last mismatch (address, what the CPU wrote, what it got, the last opcode address) and counts reads checked, writes shadowed, CPU resets, opcode fetches at 0000h (with the address the ROM left from), and the last OUT.
+- sysctrl.v command 7 reads those 32 bytes; the firmware has a new Debug entry on the main menu, below About, that reads and formats them.
+
+Checks: lint clean; the simulation reads 4100 checks and 0 mismatches through the same SPI command the firmware uses; make menu-test passes with the new page; the bitstream meets timing (Logic 33%, BSRAM 28/46, clk30 makes 55.4 MHz, 0 violations).  Not flashed.
+
+Flash both again, the BL616 first:
+1. BL616 into boot mode (hold BOOT, tap RESET, release BOOT), then: sg dialout -c 'make flash-mcu COMX=/dev/ttyACM0'  and press RST.
+2. Replug the Tang, make flash-fpga-flash, power-cycle.
+
+Then, while the border blinks, press F12, go to Debug and tell me every line (a photo is fine).  Then leave the page, wait a few seconds, open it again and tell me which numbers moved.
+
+How to read it: "bad" above 0 means the RAM lied to the CPU and the first line says where, what was expected and what came back.  "bad" at 0 with "M1 at 0000" climbing means the RAM was honest and the ROM restarts for another reason; "last from" is where it jumped from.  "cpu resets" climbing means something outside the ROM is resetting the machine.
+
+Docs updated: progress.md (the second flash), build.md (LED polarity, the Debug page), mcu.md, fpga.md, CLAUDE.md, guideline.md.
+
+bl companion board connected
+
+****
+
+BL616 flashed (the build with the Debug page): SHA256 verified by the chip, "All programming completed successfully".  Press RST.  Now the Tang: plug it in and say so.
+
+tang connected
+
+****
+
+FPGA flashed: erase and write to 100%, Done.  Power-cycle the board, then F12, Debug, and read me every line; leave it, wait a few seconds, open it again and say which numbers moved.
+
+debug shows about text now
+
+****
+
+You've hit your session limit · resets 4am (Europe/Moscow)
+
+continue
+
+****
+
+(5 Sep 2026, morning.  The compaction summary was stale; the state was re-read from the tree and from the night's transcript, which ended at "debug shows about text now".)
+
+Fixed the OSD's Debug page, and only the BL616 needs reflashing.
+
+The bug: menu.c told the two 'T' entries apart with strcmp(label, "Debug"), but menu_get_str returns the rest of the form string - "Debug,;B,Save settings,S;" - so the compare never matched and every 'T' entry opened the About text.  The host test had only checked that a text page opened, not which one.
+
+What changed:
+- mnano/menu.c: the label is compared as a prefix up to its comma; a small menu_text_line() accessor exposes the open page's lines.
+- mnano/menu_test.c: About must begin "PK8000 Nano", Debug must begin "por " (the flags line).  make menu-test: 20 screens, 0 errors, and the debug screenshot shows the flags line.
+- make fw built; bin/bl616.bin replaced, 5 Sep 10:21.  bin/tang.fs of 23:02 is unchanged.
+- Docs: progress.md gained "The third flash, 23:11" and defect 17; mcu.md, CLAUDE.md's Debug trap and guideline.md's board count updated.
+
+Claims: the firmware builds and passes the host walk of the menu.  It has not run on the board.  Nothing committed.
+
+Next, on your side: BL616 into boot mode (hold BOOT, tap RESET, release BOOT), make flash-mcu, power-cycle, F12, Debug, and read me every line; then leave it a few seconds, open it again and say which numbers moved.  The FPGA does not need reflashing.
+
+connected
+
+****
+
+BL616 flashed: 434736 bytes written, SHA verified by host and device, "All programming completed successfully".  Reconnect it to the Tang normally (out of boot mode), power-cycle, F12, Debug, and read me every line; wait a few seconds, open it again, and say which numbers moved.
+
+first open: por 1 init 1 rst 0 bist 1 fail
+0 late 0
+F000-FFFF: 65535 rd
+65535 wr 80 bad
+1st F7 F9 exp 51 git 00 pc
+24C4
+last F7FC exp 29 got 00
+pc 24C5
+cpu resets 3, M1 at 0000:
+23
+last from 24C5
+last OUT 88=FF pc 24BE
+m1 175
+
+next open mostly the same but
+65535 wr 255 bad
+cpu resets 3, M1 at 0000:
+91
+m1 146
+
+****
+
+Found it.  The SDRAM controller never precharged a row, and the fourth bitstream with the fix is built and waits to be flashed.
+
+What the page said: the ROM's fill routine at 24B9h pushes DE (E = 51h, at F7F9h) and a CALL before it pushed its return address (29h at F7FCh); after the fill had run over other addresses both bytes came back as 00h - the byte the fill writes.  POP got zeros, RET went to 0000h, "M1 at 0000" climbs while "cpu resets" stays.  A byte written to one row was destroyed by writes to another row: not the capture clock (the self-test's four bytes are in one row with nothing between write and read), not the pads.
+
+The cause, sdram.v's column word: {2'b0, 1'b1, act_adr[8:1]} - UKNC Nano's {5'b00100, col} for a 13-bit bus repacked into 11 bits with the 1 on A8, not A10.  No access auto-precharged, every ACTIVE after the first went to a bank with a row open (undefined on the part); the chip evidently kept the old row, so all 64 KB was one 512-byte row: zeros read back, the self-test passed, and the stack's columns were zeroed by every later fill.  The simulation model just opened the new row on every ACTIVE, so BASIC booted on it for a day.
+
+Done:
+- sim/stubs/sdram_model.v refuses an ACTIVE on a bank with a row still open (the old row stays), counts them, prints "ACTIVEs on a bank with a row still open: N (must be 0)" at the end, and closes a row on a READ/WRITE with A10 (it had ignored auto-precharge too).
+- The unfixed controller against it, 900 ms: 607541 refused ACTIVEs and memcheck "first 51 at f7f9 got 00 pc 24c4; last 29 at f7fc got 00 pc 24c5, fetches at 0000 last from 24c5" - your page, byte for byte.
+- sdram.v: {1'b1, 2'b00, act_adr[8:1]} - A10 set.  My first fix, {2'b01, 1'b0, col}, put the 1 on A9, and the strict model caught that: same 1.76 M refused ACTIVEs, same failure.
+- Fixed design, 2600 ms: 0 refused ACTIVEs, read-after-write 250127 checked 0 wrong, memcheck 0 wrong, BASIC banner and Ok in the frame.
+- Bitstream: 0 violations, gate green, Logic 33% Register 18% BSRAM 28/46, clk30 65.8 MHz; bin/tang.fs 11:01.  Firmware unchanged from 10:21.
+- Docs: progress.md "The Debug page read", defect 16 fixed in the tree, item 7 (a self-test across rows); CLAUDE.md two traps; fpga.md, build.md, guideline.md; model and sdram.v headers.  Nothing committed.
+
+Claims: linted, simulated to the prompt against a model that now enforces the one rule the board broke, and timed.  Not run on a board.
+
+Next: FPGA only - replug the Tang, make flash-fpga, power-cycle.  Expect the cyan border for ~100 ms, then the BASIC banner.  If it still restarts, F12, Debug, and read me the lines again.
