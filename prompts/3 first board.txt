@@ -219,3 +219,9 @@ The machine's character set is КОИ-8: the ROM's banner at 1762h spells "ве�
 - make fw: bin/bl616.bin 11:54.  Docs: platform.md (the character set), mcu.md, howto.md, build.md, CLAUDE.md's tokens trap, progress.md.
 
 Claims: built, host-tested, simulated.  Not on the board - the BL616 needs flashing (boot mode, make flash-mcu); the FPGA is unchanged since 11:23 and still needs its flash from the previous step.  Nothing committed.
+
+all works all done
+
+****
+
+Recorded as the fifth flash (progress.md, CLAUDE.md, guideline.md, memory): the expansion switches and Cyrillic in "Run .bas" on the board, by your report.  Nothing committed; the tree since "fixed start" is those two changes, the keyboard table and today's docs, ready for a commit when you say.

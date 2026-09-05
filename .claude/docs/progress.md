@@ -10,9 +10,9 @@ flashes of 4 Sep did not boot: the SDRAM controller never precharged
 (defect 16, its column word had no A10), the simulation model had not
 minded, and the chip aliased all 64 KB into one row; the third flash's
 Debug page named it and the fourth carried the fix (below, "The first
-board" through "The fourth flash").  Everything built after 11:01 is
-untested on the board until this file says otherwise.  On UKNC Nano's
-framework:
+board" through "The fifth flash").  The fifth flash, about 12:00 the
+same day, carried the expansion switches and the Cyrillic "Run .bas":
+"all works all done".  On UKNC Nano's framework:
 
 - the КР580ВМ80А (vm80a) at 2.5 MHz on a 30 MHz clock, the SDRAM on a
   fixed timetable, the BASIC 1.2 ROM, the bank register;
@@ -38,7 +38,7 @@ framework:
 
 ```
 Logic 30%   Register 17%   BSRAM 25/46 (55%)   PLL 2/2   clk30 70.3 MHz   0 violations   [4 Sep 2026, v0.2.0 + poke.v]
-Logic 33%   Register 18%   BSRAM 28/46 (61%)   PLL 2/2   clk30 71.7 MHz   0 violations   [5 Sep 2026 11:23, three expansion switches - not yet on a board]
+Logic 33%   Register 18%   BSRAM 28/46 (61%)   PLL 2/2   clk30 71.7 MHz   0 violations   [5 Sep 2026 11:23, three expansion switches - the fifth flash, works]
 Logic 33%   Register 18%   BSRAM 28/46 (61%)   PLL 2/2   clk30 65.8 MHz   0 violations   [5 Sep 2026 11:01, v0.2.0 + memcheck.v + A10 - the fourth flash, boots]
 Logic 33%   Register 18%   BSRAM 28/46 (61%)   PLL 2/2   clk30 55.4 MHz   0 violations   [4 Sep 2026 night, v0.2.0 + memcheck.v]
 Logic 29%   Register 17%   BSRAM 25/46 (55%)   PLL 2/2   clk30 62.8 MHz   0 violations   [4 Sep 2026, v0.2.0]
@@ -235,13 +235,15 @@ beyond booting into BASIC - the keyboard, the tape, the disks over the
 real card, the sound - is not measured and this file does not claim
 it.
 
-Built after that, the same day, and **not on a board yet**: the
-three expansion switches (f, i, r) in `sysctrl.v`, `top.v`, `menu.c`
-and the testbench replace the one 'x' choice - bitstream 11:23, 0
-violations, clk30 71.7 MHz; firmware 11:22, the host menu test 20
-screens 0 errors.  Both binaries in `bin/` are these.  Simulated: the
-IDE boot from `soft/cf.img` through the new letter (the run's result
-is in "What the simulation showed", below).
+### The fifth flash, about 12:00
+
+Both binaries: the bitstream of 11:23 (the three expansion switches f,
+i, r replacing the one 'x' choice; 0 violations, clk30 71.7 MHz) and
+the firmware of 11:54 (the switches in the menu, the keyboard table's
+companion, Cyrillic in "Run .bas").  The operator: **"all works all
+done"**.  What was exercised beyond booting is, again, the operator's
+word, not a measurement here.  The simulations behind the two changes
+are in "What the simulation showed", below.
   Firmware unchanged from 10:21.
 
 ## What the simulation showed on 4 September 2026
@@ -289,7 +291,7 @@ makes about 15 ms of machine time a second.
   output by `make bas-test`).  The frame at 3.05 s shows the ROM
   printing "ПК8000 версия 1.2", "привет, Сура!" and both alphabets in
   its own font from the КОИ-8 bytes, and line 50's Ё, dash and euro as
-  `*`.  639200 SDRAM checks 0 wrong.  Not yet on a board.  That is the ВВ55-to-ATA path, the LBA read
+  `*`.  639200 SDRAM checks 0 wrong.  On the board with the fifth flash.  That is the ВВ55-to-ATA path, the LBA read
   command, 8/16-bit data and the ROM decode all exercised by the
   software the community actually uses.
 - **Floppy**: `+EXP=1 +FDDA=blank.fdd` (819200 zero bytes).  The НГМД

@@ -34,9 +34,10 @@ did not boot - the ROM's RAM test passed and nothing after it did, the
 SDRAM's four-byte self-test passed too - and the fourth (5 Sep, 11:01)
 does: the OSD's Debug page (`memcheck.v`) named the fault, a column
 word with no A10, and the operator reports the machine working.  See
-`.claude/docs/progress.md`, "The first board" through "The fourth
-flash".  Anything built since is untested on the board until it says
-otherwise there.**  So "it builds", "it
+`.claude/docs/progress.md`, "The first board" through "The fifth
+flash" (5 Sep, about 12:00: the expansion switches and Cyrillic in
+"Run .bas", "all works all done").  Anything built since is untested
+on the board until it says otherwise there.**  So "it builds", "it
 lints", "it boots in simulation" and "it meets timing" are four
 different claims, none of them is "it works", and you should say which
 one you are making.
