@@ -75,7 +75,10 @@ module top(
 
     // the MCU link, stock MiSTeryNano wiring: an external BL616 / M0S
     // Dock on 42/41/56/54/51 - 0 miso, 1 mosi, 2 csn, 3 sclk, 4 irqn
-    inout  [ 4:0] m0s
+    inout  [ 4:0] m0s,
+
+    // RECONFIG_N, pin 9: driven low by SYS command 9 to reload the FPGA
+    output        reconfig_n
 );
 
 assign O_sdram_dqm[3:2]   = 2'b11;
@@ -495,6 +498,7 @@ mcu_spi msp1 (
     .mcu_dout      (mcu_dout      )
 );
 
+wire sys_reconfig;   // SYS command 9: reload the FPGA (see the MultiBoot block below)
 sysctrl sctl1 (
     .clk           (clk           ),
     .reset         (mist_rst      ),
@@ -524,8 +528,26 @@ sysctrl sctl1 (
     .poke_stb      (poke_stb      ),
     .poke_adr      (poke_adr      ),
     .poke_data     (poke_data     ),
-    .dbg           (dbg_bus       )
+    .dbg           (dbg_bus       ),
+    .reconfig      (sys_reconfig  )
 );
+
+//------------------------------------------------------------------------
+// MultiBoot (tang-ultima): the MCU's SYS command 9 (sysctrl.v) pulses
+// RECONFIG_N - pin 9, a GPIO output here (-use_reconfign_as_gpio) - and
+// the FPGA reloads the image whose SPI flash address this bitstream's
+// header names (Gowin MultiBoot, UG290 7.5.4; gowin_tcl.py's
+// --multiboot-addr).  A standalone build names 0, which is itself.  The
+// pin must read high from configuration on, so the counter starts at 0
+// and the pin is low only while it counts down - 256 clocks, far over
+// the 25 ns the FPGA asks for.  Nothing of the running design survives.
+//------------------------------------------------------------------------
+reg [7:0] reconfig_cnt = 8'd0;
+always @(posedge clk) begin
+    if(sys_reconfig)            reconfig_cnt <= 8'hff;
+    else if(reconfig_cnt != 0)  reconfig_cnt <= reconfig_cnt - 8'd1;
+end
+assign reconfig_n = (reconfig_cnt == 8'd0);
 
 // The debug window the MCU reads through sysctrl's CMD 7: a shadow of
 // F000h-FFFFh checked against every read, and what the CPU is doing

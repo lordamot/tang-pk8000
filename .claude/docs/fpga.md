@@ -169,6 +169,20 @@ The board as UKNC Nano wires it, unchanged - `README.md` has the table.
 The SDRAM is in the package and its pins are the tool's.  The USB-C
 serial (pin 69) is driven idle; the ПК8000 has no serial port.
 
+### RECONFIG_N, pin 9 (Sep 2026, for ../tang-ultima)
+
+`top.v` has an output `reconfig_n` on pin 9, the FPGA's RECONFIG_N,
+made a GPIO by `"RECONFIG_N": true` in the process config
+(`gowin_tcl.py` -> `-use_reconfign_as_gpio 1`).  It is high from
+configuration and goes low for 256 clocks when `sysctrl.v` sees SYS
+command 9 followed by A5h; the FPGA then reloads itself from the flash
+address in this bitstream's header (Gowin MultiBoot, UG290 7.5.4) - 0,
+this image itself, for a build in this tree, and the next machine's slot
+for a build by `../tang-ultima`, which passes `gowin_tcl.py
+--multiboot-addr`.  Nothing in this design depends on it; the firmware
+in this tree never sends CMD 9.  `../tang-ultima/.claude/docs/multiboot.md`
+has the whole account.
+
 ## The SD path
 
 `sd_card.v` (MiSTeryNano's) has one sector interface for the machine:

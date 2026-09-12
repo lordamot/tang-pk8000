@@ -57,7 +57,10 @@ module sysctrl (
   output reg [7:0]  poke_data,
 
   // CMD 7: the debug window (memcheck.v), 32 bytes
-  input [255:0]     dbg
+  input [255:0]     dbg,
+
+  // CMD 9: reload the FPGA from the next image in the SPI flash (tang-ultima)
+  output reg        reconfig
 );
 
 reg [3:0] state;
@@ -83,6 +86,7 @@ always @(posedge clk) begin
 
       int_ack <= 8'h00;
       coldboot = 1'b1;      // reset is actually the power-on-reset
+      reconfig <= 1'b0;
 
       // the OSD's defaults (menu.c, variables_pk8000), until the MCU says
       system_reset  <= 2'b00;
@@ -102,6 +106,7 @@ always @(posedge clk) begin
       poke_adr <= 16'd0;
    end else begin
       int_ack <= 8'h00;
+      reconfig <= 1'b0;
       poke_stb <= 1'b0;
       if(poke_stb) poke_adr <= poke_adr + 16'd1;   // the clock after a byte
 
@@ -181,6 +186,17 @@ always @(posedge clk) begin
             if(command == 8'd5) begin
                 if(state == 4'd1) int_ack <= data_in;
                 data_out <= { int_in[7:1], coldboot };
+            end
+
+            // CMD 9: reconfigure (tang-ultima's core switch).  The byte
+            // after the command must be A5h, so that a stray byte on the
+            // link cannot reload the FPGA; the pulse reaches top.v, which
+            // drives RECONFIG_N (pin 9, a GPIO here) low, and the FPGA
+            // loads the image whose flash address this bitstream's header
+            // names (Gowin MultiBoot, UG290 7.5.4) - itself, for a
+            // standalone build.  Nothing here survives it.
+            if(command == 8'd9) begin
+                if(state == 4'd1 && data_in == 8'hA5) reconfig <= 1'b1;
             end
          end
       end

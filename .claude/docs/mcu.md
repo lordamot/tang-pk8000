@@ -139,6 +139,11 @@ SDC); `mcu_spi.v` takes it through a handshake into the 30 MHz domain.
 in `README.md`.  UKNC Nano's `.claude/docs/mcu.md` has the byte-level
 protocol of each target and it has not changed.
 
+**SYS command 9** (Sep 2026): followed by A5h, it makes the core pulse
+RECONFIG_N and the FPGA reload from the flash address in its header -
+the core switch of `../tang-ultima`, whose firmware is the one that
+sends it.  This tree's firmware does not.
+
 ## What was removed from UKNC Nano's firmware (Sep 2026)
 
 `uknc.h`, `rt11sav.c/h` ("Run SAV"), the UKNC forms and variables, the
