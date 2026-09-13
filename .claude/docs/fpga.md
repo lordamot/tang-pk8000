@@ -169,57 +169,30 @@ The board as UKNC Nano wires it, unchanged - `README.md` has the table.
 The SDRAM is in the package and its pins are the tool's.  The USB-C
 serial (pin 69) is driven idle; the ПК8000 has no serial port.
 
-### RECONFIG_N, pin 9 (Sep 2026, for ../tang-ultima)
+### The configuration flash, and RECONFIG_N (Sep 2026, for ../tang-ultima)
 
-`top.v` has an output `reconfig_n` on pin 9, the FPGA's RECONFIG_N,
-made a GPIO by `"RECONFIG_N": true` in the process config
-(`gowin_tcl.py` -> `-use_reconfign_as_gpio 1`).  It is high from
-configuration and goes low for 256 clocks when `sysctrl.v` sees SYS
-command 9 followed by A5h; the FPGA then reloads itself from the flash
-address in this bitstream's header (Gowin MultiBoot, UG290 7.5.4) - 0,
-this image itself, for a build in this tree, and the next machine's slot
-for a build by `../tang-ultima`, which passes `gowin_tcl.py
---multiboot-addr`.  Nothing in this design depends on it; the firmware
-in this tree never sends CMD 9.  `../tang-ultima/.claude/docs/multiboot.md`
-has the whole account.
+`top.v` has an output `reconfig_n` and four more for the FPGA's MSPI pins.
+Both exist for `../tang-ultima`, which puts three machines on one board;
+nothing in this design depends on either, and the firmware in this tree
+sends neither SYS command.
 
-## The SD path
+**The flash, MCLK 59, MCS_N 60, MO 61, MI 62.**  `mister/flashwr.v` owns
+them - a 512-byte buffer and one transaction, "shift TX bytes out, read RX
+back, CS held" - driven by **SYS command 10**.  They are the FPGA's own
+configuration bus until DONE and user logic's afterwards, which
+`"MSPI" : true` in the process config asks for (`gowin_tcl.py` ->
+`-use_mspi_as_gpio 1`); UG290 4.1.2 table 4-2 says so and the board
+confirms it - a bitstream built this way still boots from the flash it then
+takes over.  `../tang-ultima` uses it to write the next machine to flash
+address 0, which is what power-up always loads.  Verified on a board, 13
+September 2026.
 
-`sd_card.v` (MiSTeryNano's) has one sector interface for the machine:
-request levels `rstart[4:0]`/`wstart[4:0]` one-hot by image slot, the
-sector within the image, then `rbusy`, the 512 bytes on
-`outen/outaddr/outbyte` (or taken from `inbyte` at `outaddr` for a
-write), and `rdone`.  The MCU sees the request as an interrupt,
-translates the sector through its file system and drives the card.
-Five clients share it through `sd_arbiter.v`: slot 0 the tape, 1 and 2
-the floppies (one controller; its drive bit picks the slot), 3 the hard
-disk, 4 the ROM disk loader.  A client raises `rd`/`wr` with its
-sector, gets `ack` as a level while it owns the path, the byte stream
-gated to it, and `done`.  Only one request ever reaches `sd_card.v` at
-a time, which the MCU's one-hot reading requires.
-
-The expansion page: `top.v` routes a page-1 read to `fdc.v`, the IDE
-ROM, or the SDRAM at `romdisk.v`'s address - to the first device that
-is on in that order, each on its own OSD switch (f, i, r; `exp_fdc`,
-`exp_ide`, `exp_rom` are the page's owner, `system_ide` alone gates
-the IDE's ports) - and a page-1 write to the RAM under it and, with
-the floppy in, to `fdc.v` as well.  `rd_src` grew from four sources to eight (RAM, ROM, ports,
-FDC, HDD ROM, AY, IDE, none).
-
-## The MCU's way into the RAM
-
-`sysctrl.v`'s CMD 6 is an address and then any number of bytes; each
-byte is a strobe into `poke.v`, a 16-deep queue that writes them
-through the SDRAM's CPU port in T-states where the CPU makes no
-request of its own - `top.v` ORs `poke_req` into `ram_req` behind
-`mem_rd`/`mem_wr` at phase 7, so the CPU never waits and never sees
-the write happen.  The ROM disk loader (which holds the CPU) has
-priority over it.  The firmware's `bas.c` uses it to put a tokenised
-BASIC program at 4001h and the ROM's pointers after it; the testbench's
-`+BAS=` does the same from a `.tok` file.
-
-## What is not there yet
-
-Recording to tape, a second thing in the expansion slot at the same
-time, the printer (its port is decoded, its data goes nowhere) - and
-everything in `.claude/docs/progress.md`.
+**`reconfig_n`, pin 48, open drain.**  Pulses low for 256 clocks when
+`sysctrl.v` sees SYS command 9 followed by A5h.  It is on pin 48 and not on
+pin 9 because **reusing pin 9 as a GPIO cuts the pad from the
+configuration controller**: driven from there the pulse is generated and no
+configuration is attempted.  Pin 9 is therefore left a RECONFIG_N input,
+and a wire from pin 48 to test pad TP1 - the only other point on pin 9's
+net - would make the pulse work.  Without that wire this output does
+nothing.  `../tang-ultima/.claude/docs/progress.md` has the evidence and
+`coreswitch.md` the design that does not need it.

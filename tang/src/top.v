@@ -77,8 +77,20 @@ module top(
     // Dock on 42/41/56/54/51 - 0 miso, 1 mosi, 2 csn, 3 sclk, 4 irqn
     inout  [ 4:0] m0s,
 
-    // RECONFIG_N, pin 9: driven low by SYS command 9 to reload the FPGA
-    output        reconfig_n
+    // pin 48, wired on the board to TP1 = RECONFIG_N: low on SYS command 9
+    // reloads the FPGA.  Driven from an ordinary pin and not from pin 9
+    // itself because reusing pin 9 as a GPIO cuts the pad from the
+    // configuration controller - dormant without that wire.
+    output        reconfig_n,
+
+    // The configuration flash, on the MSPI pins that -use_mspi_as_gpio
+    // hands to user logic after configuration (flashwr.v, SYS command
+    // 10): this is how a core switch writes the next machine to flash
+    // address 0, which is what power-up always loads.
+    output        mspi_clk,      // 59 MCLK
+    output        mspi_cs_n,     // 60 MCS_N
+    output        mspi_do,       // 61 MO, into the flash
+    input         mspi_di        // 62 MI, out of it
 );
 
 assign O_sdram_dqm[3:2]   = 2'b11;
@@ -499,6 +511,8 @@ mcu_spi msp1 (
 );
 
 wire sys_reconfig;   // SYS command 9: reload the FPGA (see the MultiBoot block below)
+wire       flash_stb, flash_first;   // SYS command 10 -> flashwr.v
+wire [7:0] flash_din, flash_dout;
 sysctrl sctl1 (
     .clk           (clk           ),
     .reset         (mist_rst      ),
@@ -529,18 +543,39 @@ sysctrl sctl1 (
     .poke_adr      (poke_adr      ),
     .poke_data     (poke_data     ),
     .dbg           (dbg_bus       ),
-    .reconfig      (sys_reconfig  )
+    .reconfig      (sys_reconfig  ),
+    .flash_stb(flash_stb), .flash_first(flash_first),
+    .flash_din(flash_din), .flash_dout(flash_dout)
+);
+
+//------------------------------------------------------------------------
+// The configuration flash under user control (tang-ultima): SYS command
+// 10 into flashwr.v, which owns the MSPI pins once configuration is over.
+// A core switch writes the wanted machine to flash address 0 and the
+// board is power-cycled into it - RECONFIG_N cannot be made to reload
+// this FPGA from inside (see flashwr.v).
+//------------------------------------------------------------------------
+flashwr fwr1(
+    .clk(clk), .reset(mist_rst),
+    .stb(flash_stb), .first(flash_first),
+    .din(flash_din), .dout(flash_dout),
+    .mspi_clk(mspi_clk), .mspi_cs_n(mspi_cs_n),
+    .mspi_do(mspi_do),   .mspi_di(mspi_di)
 );
 
 //------------------------------------------------------------------------
 // MultiBoot (tang-ultima): the MCU's SYS command 9 (sysctrl.v) pulses
-// RECONFIG_N - pin 9, a GPIO output here (-use_reconfign_as_gpio) - and
-// the FPGA reloads the image whose SPI flash address this bitstream's
-// header names (Gowin MultiBoot, UG290 7.5.4; gowin_tcl.py's
-// --multiboot-addr).  A standalone build names 0, which is itself.  The
-// pin must read high from configuration on, so the counter starts at 0
-// and the pin is low only while it counts down - 256 clocks, far over
-// the 25 ns the FPGA asks for.  Nothing of the running design survives.
+// reconfig_n - pin 48, an open-drain output, wired on the board to TP1,
+// which is the only other point on pin 9's net (RECONFIG_N).  It is
+// driven from here and not from pin 9 itself: reusing pin 9 as a GPIO
+// disconnects the pad from the configuration controller, which the board
+// showed on 13 Sep 2026 by not reloading for a pulse that was provably
+// generated.  The FPGA then reloads the image whose SPI flash address
+// this bitstream's header names (Gowin MultiBoot, UG290 7.5.4;
+// gowin_tcl.py's --multiboot-addr).  A standalone build names 0, which is
+// itself.  The pin must read high from configuration on, so the counter
+// starts at 0 and the pin is low only while it counts down - 256 clocks,
+// far over the 25 ns the FPGA asks for.  Nothing of the design survives.
 //------------------------------------------------------------------------
 reg [7:0] reconfig_cnt = 8'd0;
 always @(posedge clk) begin

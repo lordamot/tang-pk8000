@@ -139,10 +139,13 @@ SDC); `mcu_spi.v` takes it through a handshake into the 30 MHz domain.
 in `README.md`.  UKNC Nano's `.claude/docs/mcu.md` has the byte-level
 protocol of each target and it has not changed.
 
-**SYS command 9** (Sep 2026): followed by A5h, it makes the core pulse
-RECONFIG_N and the FPGA reload from the flash address in its header -
-the core switch of `../tang-ultima`, whose firmware is the one that
-sends it.  This tree's firmware does not.
+**SYS command 10** (Sep 2026): the configuration flash, through
+`mister/flashwr.v` and the MSPI pins - a sub-command, then its bytes.  It
+is how `../tang-ultima` writes the next machine to flash address 0, which
+is the core switch of that project.  **SYS command 9**, followed by A5h,
+pulses `reconfig_n` and is dormant: driven from a GPIO the pad does not
+reach the configuration controller, so nothing reloads without a wire from
+pin 48 to TP1.  This tree's firmware sends neither.
 
 ## What was removed from UKNC Nano's firmware (Sep 2026)
 
