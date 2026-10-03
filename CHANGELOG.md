@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The USB mouse on a combined receiver (Logitech 046d:c534, keyboard and
+  mouse in one): HID transfers ask for the endpoint's whole packet into
+  64-byte buffers - the receiver's mouse interface sends up to 20 bytes
+  and 8 were asked for, so the mouse never moved.  From Evo Nano's board
+  (`../retro-tang-evo`), where it made the mouse work; built, not tried
+  on this board.
+
 - UART to the board's own BL616 for `../tang-ultima`: `mister/coreload.v`,
   a 2 KB TX FIFO and a 2 Mbaud 8N1 UART on pins 69 (TX) and 70 (RX),
   driven by SYS command 11 - status {room, count} and the last byte

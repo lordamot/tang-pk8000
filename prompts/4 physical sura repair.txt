@@ -1,0 +1,88 @@
+I have physical Sura PK8000 computer which is not working.
+
+I need you to prepare fix-recommendations.pdf in russian (pdf because there might
+be pictures need to be added there) with possible steps to diagnose problem and
+repair computer.
+
+I have oscilloscope and multimeter, soldering and desoldering skills and mostly all
+ICs to replace. But it would be fine to diagnose problem first as computer board
+quite hard to desolder parts.
+
+Recommendations should be from more easy to more complex. Let me explain what I mean
+here: ROM contents are subject to check of course, but that requires desoldering all
+ICS - and thats quite a lot of them. So this is a complex step. Check clock generator
+pulse is and easy step - if compare.
+
+What was checked so far:
+- Power works for all voltages needed
+- CPU works (checked it in other working Sura computer)
+- Top Board "ПХЗ.099.006" works also - same placed in working computer check
+  and all seems ok with it
+
+What we currently have:
+- no video at composite output - pure black screen
+- keyboard initialized after power up - as instead of all 3 LEDs - only "Вкл" lit
+- no reaction on keys on keyboard - no beeps, no reaction for those which
+  should lit other leds
+- reset button - beeps (no idea if it correct or not) and keyboard go through
+  "all 3 leds lit" - "only Вкл lit" cycle
+
+****
+
+fix-recommendations.pdf is at the repository root: 19 pages, A4, in Russian, with
+twelve schematic fragments as figures (the HTML source and the figure crops are in
+this session's scratchpad; say if you want them in the repo).
+
+What the symptoms already say, and what the document is built around
+
+- The LED cycle at reset (three lit, then only "Вкл") is the ROM's first seven OUT
+  instructions programming both ВВ55s: the РГ LED is DD33 PC5 (port 82h bit 5), the
+  АЛФ LED is DD32 PC5 (port 86h bit 5), both through open-collector inverters in
+  DD1. So the CPU is clocked, leaves reset, fetches ROM (DD41 and DD46), the data bus
+  works both ways, the port decoder DD21 and the strobes in DD14 work.
+- The next thing the ROM does is write 88h = 77h (a cyan border, grey on the
+  monochrome composite) and test F000h-FFFFh, retrying for ever. Interrupts are
+  enabled only after the test, and the keyboard is scanned only in the interrupt,
+  so "no key reaction" is consistent with the machine standing in the RAM test. Your
+  own note on this unit from July ("black screen with a grey border top and bottom")
+  is exactly that picture.
+- The beep at reset is a click from the piezo line changing level, not a ROM tone.
+  Key click is off by default in this BASIC (the BEEPF flag at FA20h is zeroed by
+  the RAM test), so "no beeps on keys" is not a symptom. The LEDs not reacting to
+  ФИКС/АЛФ is.
+- The DRAM, the clock generator, READY and the frame interrupt are all on the upper
+  board, which works. What the lower board contributes to a RAM access is the
+  address and data lines through XS4/XS5, the strobes WRRAM/ and RDR/, the bank
+  multiplexer DD34 with its enable flip-flop DD5.1, the page decoder DD35 (CSRAM/),
+  DD22 (SELROM/) and the READY line through XS3.1 A3. That is where the guide sends
+  you, once a ten-minute multimeter test has confirmed the state.
+
+How the document is ordered
+
+1. Facts and what they imply (as above), with the three possible "black screens".
+2. What sits on which board and the three inter-board connectors, signal by signal.
+3. A multimeter-only table that tells apart "stuck in the RAM test", "booted to
+   BASIC" and "not running": DD32 pin 39 (0 before the test, 1 after SCREEN 0), CPU
+   INTE (pin 16) and INT (pin 14, permanently high when never acknowledged), DD5.1
+   pin 6, the keyboard row lines KA0-KA3.
+4. Stages 0-7: contacts and jumpers (CPU socket re-tinning fixed two of your other
+   Suras; KT1-KT2 on both boards), supply rails including the on-board -5 V (R32,
+   VD2), oscilloscope on Ф1/Ф2 (12 V swing at pins 22/15), reset, SYNC, READY/WAIT,
+   HOLD; the oscilloscope signature of the stuck loop (WRRAM/ every 21-30 us, IOWR/
+   never, only RDROM5/ active); the RAM path checks in order of likelihood; the video
+   output stage (VT1, DD12.1, SI/, GI/); the "alive but no keyboard" branch; and only
+   then chip replacement, with the EPROMs last.
+5. Appendices: CPU and ВВ55 pins used, connector pin maps, the ROM's boot sequence
+   with what each step shows, per-EPROM CRC32 and byte sums of BASIC 1.2 (every 2 KB
+   chip sums to xx00h), and a measurement protocol to fill in.
+
+One correction I made during review: the colour register outputs (DD30/DD31) sit on
+a time-multiplexed bus and are enabled only during the border, so they cannot be
+read statically with a multimeter; the guide uses DD32 pin 39 and INTE instead and
+says to look at DD30/DD31 with a two-channel scope synchronised to SI/.
+
+What this is and is not: pin numbers come from Mick's redrawn schematic of
+ПХЗ.099.001/006 and the boot sequence from the disassembled ROM, checked against
+the FPGA reimplementation's behaviour; nothing was measured on your board. The
+"stuck in the RAM test" reading is the most consistent hypothesis, and section 3
+is there to confirm or refute it before anything is desoldered.

@@ -1,0 +1,128 @@
+need one more pdf file to repair computer. I have your manual about diagnosing it, diagnose will be done as board solder side up - to access all necessary pins. I need pcb mount diagram with elements placement - so simple squares with DDxy text, and pins with numbers visible (so I can look at it and quickly find IC or other element of interest)
+
+****
+
+board-layout.pdf, seven A3 sheets, next to fix-recommendations.pdf.
+
+What made it possible: neither schematic PDF in tang/rom/ has a placement
+drawing for the lower board (the upper board's sheet 3 does).  But
+~/Work/kay1024/sura/schematic/mick/ carries Mick's P-CAD sources and, under
+pk8000_gerber/, the Gerber sets for BOTH boards - GTL (pads), GTO
+(silkscreen), GKO (outline), plus the drill files.  That is exact geometry,
+not a redraw.
+
+Sheets:
+
+  1  cover - what it is, how to read it, sources, what may be wrong
+  2  PХЗ.099.001 (lower/system board) - SOLDER SIDE, scale 1.17:1
+  3  the same, component side
+  4  PХЗ.099.006 (upper board, RAM + video) - SOLDER SIDE, scale 1.45:1
+  5  the same, component side
+  6  index for the lower board - designator to grid square
+  7  index for the upper board, with the chip type from the factory list
+
+Every pad is drawn at its true position, pin 1 as a black square, vias as
+small grey dots, the silkscreen outlines in grey, the board edge in black.
+Each IC is boxed and its pins numbered 1..N inside the body (outside would
+collide with the neighbouring package - the chips sit 15 mm apart on a
+7.5 mm body).  Designators are drawn upright at their real silkscreen
+positions.  25 mm coordinate grid, letters across, digits down.
+
+How the designators were read: the silkscreen is stroked vector text, so it
+cannot be mirrored and stay readable.  The strokes were clustered into
+words, the words into characters, and identical characters collapsed by an
+exact quantised signature - 25 distinct glyphs on the lower board, 19 on the
+upper.  Reading those 44 shapes once decodes every label.  Result: 172
+designators on the lower board, 91 on the upper.
+
+Two independent checks that it is right:
+
+  - The upper board's decode is DD1-DD40, R1-R15, C1-C32, KT1-KT3, ZQ1 -
+    exactly the parts list on sheet 3 of the factory schematic, nothing
+    missing, nothing extra.
+  - The pin counts found from pad geometry on the upper board (26 x DIP-16,
+    9 x DIP-14, 3 x DIP-20, 2 x DIP-28) match that same list chip for chip.
+  - The Gerber layout was compared against the factory drawing
+    "Расположение радиоэлементов" on that sheet: element for element the
+    same, so Mick's board is a faithful copy and the lower board's Gerber
+    can be trusted the same way.
+
+Footprints: 48 on the lower board (47 microcircuits + DA1), 40 on the upper
+- all of them, none left without numbering.  Finding the body side was the
+hard part: with chips on a 15 mm pitch and a 7.5 mm body, a pin-1 pad has a
+neighbouring chip's row at 7.5 mm on BOTH sides, and the resistors mounted
+in the gaps defeat the obvious tests.  What works is looking for the body
+rectangle's two long sides - silkscreen segments inset 1.25 mm from each pad
+row and running at least 80% of the package length.  Before that fix one
+footprint straddled DD25 and DD24 and numbered neither correctly.
+
+Orientation: the solder-side view is the board turned over about the
+horizontal axis, the way the factory drew "Расположение радиоэлементов со
+стороны пайки" - the XS connectors that sit at the bottom on the component
+side come out at the top.
+
+Stated on the cover as uncertain:
+
+  - The A/B/C row letters on XS3/XS4/XS5 (lower) and XS1/XS2/XS3 (upper)
+    follow the rule "the row with the square pad is A, then B and C in
+    order".  That was not verified against the board or the netlist.
+  - Twelve parts on the lower board have no designator in the silkscreen at
+    all (R10, R18, R45, R47, R50, R57, R63, R64, C2, VD5, VD6, VD7) - they
+    are drawn but not labelled.  Known from the refdes strings inside the
+    binary .pcb.
+  - XS1 and XS2 on the lower board are drawn but not numbered: their A row
+    is stepped, in two segments at different heights, and the detector does
+    not take it apart.
+  - Designators on the two boards are independent and overlap - DD32 exists
+    on both and they are different chips.  Said twice on the cover.
+
+The generator scripts are in the session scratchpad, not in the repository;
+say if they should be kept.
+
+check A/B/C rows on XS3/XS4/XS5 are correct according to schematic, please
+
+****
+
+Checked, and they are right.  board-layout.pdf is now eight sheets - the
+cover carries the verification and the two extra pages shift the drawings
+to sheets 3-6, the indexes to 7-8.
+
+The schematic gives a fingerprint that can be tested against copper: the
+connector tables leave a row blank where a contact goes nowhere.  From the
+GTL/GBL layers, for every connector pad, whether any trace ends on it (the
+copper pours needed polarity handling - %LPD%/%LPC% - because P-CAD exports
+a pour as a dark outline with a clear cut-out over it, and ignoring that
+makes every pad look connected).
+
+Upper board ПХЗ.099.006, where the power pins are routed on the board and
+so nothing is missing - all nine rows match exactly:
+
+    left connector    A={4,10}    B={3,7}   C={3,4,5,7}
+    middle            A={}        B={7}     C={1,5,6,8}
+    right             A={1}       B={}      C={2,4,5}
+
+against the schematic's blank rows, and the row holding the square pad is A
+in every case.  No other assignment of the letters produces those numbers -
+for instance the middle connector's B is the only row with exactly contact
+7 missing.
+
+Lower board ПХЗ.099.001 gives the same sets plus its power contacts: +5V
+and GND there run on the external bus bars (note 3 on sheet 3 of the
+schematic), no trace reaches them on the board, so they land in the
+"unrouted" list.  Subtract those and it matches.
+
+Two independent confirmations, not from the blanks:
+
+  - XS5 contacts С9 and С10 sit on one net, and that net reaches pin 8 of a
+    DIP-16 - GND.  XS5.3 in the schematic says С9 = GND, С10 = GND.
+  - XS4 contact В7 is a net of a single pad, no trace at all.  XS4.2 says
+    В7 is empty.
+
+Numbering direction was tested the same way: the sets match only when
+counting from the square pad outward; reversed they do not.
+
+One disagreement, now on the cover: contact В2 of XS3 (and the same contact
+on the upper board's mating connector) IS routed - a three-pad net reaching
+pin 12 of a DIP-14 - while the schematic's table leaves that row blank.
+Same on both boards, so it looks like the table is incomplete rather than
+the drawing being wrong.

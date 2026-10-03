@@ -460,6 +460,16 @@ implement them, `make bas-test` checks the two agree.
    only a run can say.  Today a second device that is on has its
    ports and no ROM.
 
+18. The USB mouse on a combined receiver (2 Oct 2026, from Evo Nano's
+    board): a Logitech receiver with keyboard and mouse in one
+    (046d:c534) sends up to 20-byte packets on its mouse interface, and
+    `usb_host.c` asked for the parsed report alone (8 bytes) into an
+    8-byte buffer - an overrun the client loop never cleared, so the
+    mouse never moved.  Fixed in `usb_host.c` (the endpoint's packet
+    size, a 64-byte buffer; `mcu.md`'s "USB HID transfers"), copied from
+    `../retro-tang-evo`, where it made the mouse work on the board.
+    `make fw` builds; not tried on this board, not in `bin/`.
+
 ## Open questions
 
 - **The digit row under Shift**: with the matrix right, the testbench's
