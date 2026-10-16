@@ -90,7 +90,7 @@ make flash-fpga-flash                            # то же из репозит
 
 Включить - и через секунды две Бейсик выведет приглашение.  **F12**
 открывает меню; курсор - по пунктам, влево/вправо - значение, пробел или
-Enter - выбрать, ESC - закрыть.  «Save settings» пишет `/pk8000.ini`
+Enter - выбрать, ESC - закрыть.  «Save settings» пишет `/pk8000/pk8000.ini`
 на карту.  Раскладка: буквы и цифры - как на клавише; `=` даёт `^`, `'`
 даёт `:`, F9 - АЛФ (рус/лат), F10 - ГРФ, F8 - ФИКС, F11 - СЕЛ, F6 - `_`;
 подробно - `.claude/docs/mcu.md`.
@@ -185,7 +185,7 @@ the old bitstream until it is restarted.
 
 Power on; BASIC prints its prompt after about two seconds.  **F12**
 opens the menu; cursor keys move, left and right step a value, Space or
-Enter selects, ESC closes.  "Save settings" writes `/pk8000.ini` to the
+Enter selects, ESC closes.  "Save settings" writes `/pk8000/pk8000.ini` to the
 card.  Keys are by position: `=` is the `^` key, `'` is `:`, F9 is АЛФ
 (Cyrillic/Latin), F10 ГРФ, F8 ФИКС, F11 СЕЛ, F6 `_`; the whole table is
 in `.claude/docs/mcu.md`.
@@ -200,3 +200,7 @@ make frames       # the same, with the screen as sim/out/*.ppm
 make bitstream    # the FPGA bitstream -> bin/tang.fs, through the timing gate
 make fw           # the BL616 firmware -> build/fw/bl616.bin
 ```
+
+SD card layout shared with Tang Ultima: `/pk8000/` holds this core's
+files and `/pk8000/pk8000.ini` settings. The firmware creates the folder
+at startup. File browsing defaults there; saved image paths take precedence.

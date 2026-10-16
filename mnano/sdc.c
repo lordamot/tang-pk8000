@@ -507,8 +507,16 @@ sdc_dir_t *sdc_readdir(int drive, char *name, const char *ext) {
   DIR dir;
   FILINFO fno;
 
-  // setup path if unset
-  if(!cwd[drive]) cwd[drive] = strdup(CARD_MOUNTPOINT);
+  // Prefer the core's SD folder for slots without a saved image path.
+  if(!cwd[drive]) {
+    const char *root = CARD_MOUNTPOINT;
+    if(core_id == CORE_ID_PK8000 &&
+       f_opendir(&dir, CARD_MOUNTPOINT "/pk8000") == FR_OK) {
+      f_closedir(&dir);
+      root = CARD_MOUNTPOINT "/pk8000";
+    }
+    cwd[drive] = strdup(root);
+  }
   
   // assemble name before we free it
   if(name) {

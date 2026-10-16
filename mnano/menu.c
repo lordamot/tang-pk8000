@@ -480,7 +480,7 @@ static const char *settings_file[] = {
   CARD_MOUNTPOINT "/amiga.ini",    // core id = 4  CORE_ID_AMIGA
   CARD_MOUNTPOINT "/uknc.ini",     // core id = 5  CORE_ID_UKNC
   CARD_MOUNTPOINT "/agat9.ini",    // core id = 6  CORE_ID_AGAT9
-  CARD_MOUNTPOINT "/pk8000.ini"    // core id = 7  CORE_ID_PK8000
+  CARD_MOUNTPOINT "/pk8000/pk8000.ini"    // core id = 7  CORE_ID_PK8000
 };
 
 // Returns NULL for a core with no settings file of its own, which both
@@ -500,6 +500,9 @@ static int menu_settings_load(menu_t *menu) {
   printf("Read settings\r\n");
 
   sdc_lock();  // get exclusive access to the file system
+
+  // Share the per-core card layout with Tang Ultima.
+  if(core_id == CORE_ID_PK8000) f_mkdir(CARD_MOUNTPOINT "/pk8000");
 
   FIL fil;
   const char *fname = settings_file_name();

@@ -92,7 +92,7 @@ Esc closes.
   the two floppies and the hard disk.
 - **About**, **Debug** (what the memory gave the CPU - for when it does
   not start, `.claude/docs/build.md`).
-- **Save settings** - writes `/pk8000.ini` on the card; loaded at power-up.
+- **Save settings** - writes `/pk8000/pk8000.ini` on the card; loaded at power-up.
 
 ## 4. If it does not start
 
